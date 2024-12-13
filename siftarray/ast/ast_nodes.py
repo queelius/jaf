@@ -3,7 +3,6 @@
 from typing import List, Dict, Any
 import re
 from siftarray.ast.evaluator import evaluate_condition
-from siftarray.ast.ast_nodes import FilterError  # Ensure correct import
 
 class FilterError(Exception):
     """Custom exception for filter operations."""

@@ -1,5 +1,3 @@
-# examples/basic_usage.py
-
 from siftarray.core import sift_array, FilterError
 
 sample_repos = [

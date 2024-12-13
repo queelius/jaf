@@ -1,5 +1,3 @@
-# siftarray/core.py
-
 from typing import List, Dict, Any, Union
 import logging
 from siftarray.dsl.parser import dsl_parser
