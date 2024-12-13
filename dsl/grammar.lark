@@ -1,0 +1,26 @@
+?start: expr
+
+?expr: expr "AND" term   -> and_op
+     | expr "OR" term    -> or_op
+     | term
+
+?term: "NOT" term        -> not_op
+     | "(" expr ")"
+     | condition
+
+?condition: field COMPARATOR value   -> condition
+
+field: CNAME ("." CNAME)*
+
+COMPARATOR: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "contains" | "regex" | "startswith" | "endswith"
+
+value: ESCAPED_STRING      -> string
+     | SIGNED_NUMBER       -> number
+     | "true"              -> true
+     | "false"             -> false
+
+%import common.CNAME
+%import common.ESCAPED_STRING
+%import common.SIGNED_NUMBER
+%import common.WS
+%ignore WS

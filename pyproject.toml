@@ -1,0 +1,26 @@
+# pyproject.toml
+
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "siftarray"
+version = "0.1.0"
+description = "A versatile filtering system for JSON arrays."
+authors = [
+    { name = "Alex Towell", email = "lex@metafunctor.com" }
+]
+readme = "README.md"
+license = { text = "MIT License" }
+keywords = ["filter", "JSON", "AST", "DSL", "Lark", "parser", "array"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/queelius/SiftArray"
+Documentation = "https://github.com/queelius/SiftArray#readme"
+Repository = "https://github.com/queelius/SiftArray"
