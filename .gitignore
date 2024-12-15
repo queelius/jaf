@@ -1,0 +1,10 @@
+
+# .gitignore for python project (jaf)
+
+.DS_Store
+.vscode
+.env
+__pycache__
+*.pyo
+*.pyc
+

@@ -1,7 +1,7 @@
 # siftarray/dsl/transformer.py
 
 from lark import Transformer, v_args
-from siftarray.ast.ast_nodes import Condition, LogicalOperation
+from jaf.ast.ast_nodes import Condition, LogicalOperation
 
 @v_args(inline=True)
 class DSLTransformer(Transformer):

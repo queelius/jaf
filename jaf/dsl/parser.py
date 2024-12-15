@@ -1,5 +1,3 @@
-# siftarray/dsl/parser.py
-
 from lark import Lark
 from .transformer import DSLTransformer
 from pathlib import Path
