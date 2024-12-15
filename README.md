@@ -11,7 +11,7 @@ lists, where each list takes the form:
 For example, the query
 
 ```python
-['and', ['language', 'eq?', 'Python'], ['stars', 'gt?', 100]]
+['and', ['eq?', ['path', 'language'], 'Python'], ['gt?', ['path', 'stars'], 100]]
 ```
 
 We also provide a DSL (Domain-Specific Language) that allows users to craft
@@ -42,7 +42,7 @@ comparison, so that the comparison is case-insensitive. Here is an example
 query that uses the `lower-case` operator:
 
 ```python
-['and', ['lower-case', 'language'], ['eq?', 'python']]
+['and', ['lower-case', ['path', 'language']], ['eq?', 'python']]
 ```
 
 This query will filter repositories where the `language` field is equal to
@@ -70,7 +70,7 @@ pip install .
 Suppose we have a list of repositories in the following format:
 
 ```python
-sample_repos = [
+repos = [
     {
         'id': 1,
         'name': 'DataScienceRepo',
@@ -89,24 +89,30 @@ sample_repos = [
 
 ### AST-Based Query
 
-Filter repositories where `language` is `"Python"`.
+Filter repositories where the lower-case of `language` is `"python"`,
+`owner.active` is `True`, and `stars` are greater than `100`:
 
 ```python
-query = ['language', 'eq', 'Python']
+query = ['and',
+    ['eq?',
+        ['lower-case', ['path', 'language'], 'Python']],
+        ['path', 'owner.active'],
+        ['gt?', ['path', 'stars'], 100]]
+
 filtered = jaf(sample_repos, query_ast)
 print("Filtered Repositories:", [repo['id'] for repo in filtered])
-# Output: [1, 3]
+# Output: [1, ...]
 ```
 
 ### DSL-Based Query
 
-Filter repositories where `language` is `"Python"` and `stars` are greater than `100`
+The equivalent query using the DSL:
 
 ```python
-query = 'language eq "Python" AND stars gt 100'
-filtered = jaf(sample_repos, query)
+query = 'language eq? "python" AND owner.active AND stars gt? 100'
+filtered = jaf(repos, query)
 print("Filtered Repositories:", [repo['id'] for repo in filtered])
-# Output: [1, 3]
+# Output: [1, ...]
 ```
 
 ### Complex Queries
@@ -114,10 +120,10 @@ print("Filtered Repositories:", [repo['id'] for repo in filtered])
 Combine multiple conditions with logical operators.
 
 ```python
-query = 'NOT language eq "R" AND (stars gt 100 OR forks gt 50)'
-filtered = jaf(sample_repos, query)
+query = 'NOT language eq? "R" AND (stars gt? 100 OR forks gt? 50)'
+filtered = jaf(repos, query)
 print("Filtered Repositories:", [repo['id'] for repo in filtered])
-# Output: [1, 3, 6]
+# Output: [...]
 ```
 
 ### Handling Errors
@@ -127,7 +133,7 @@ Catch and handle filtering errors gracefully.
 ```python
 try:
     invalid_query = 'language unknown "Python"'
-    jaf(sample_repos, invalid_query)
+    jaf(repos, invalid_query)
 except FilterError as e:
     print(f"Error: {e}")
 ```
