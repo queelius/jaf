@@ -1,7 +1,8 @@
 from typing import List, Dict, Any, Union
 import logging
-from .dsl.parser import dsl_parser
+#from .dsl.parser import dsl_parser
 from .jaf_eval import jaf_eval
+import json
 
 # Configure logging
 logging.basicConfig(level=logging.ERROR)
@@ -31,10 +32,20 @@ def jaf(data: List[Dict], query: Union[List, str]) -> List[Dict]:
     try:
         results = []
         for obj in data:
-            if ininstance(obj, dict):
-                results.append(jaf_eval.eval(query, obj))
+            if isinstance(obj, dict):
+                print(f"Evaluating {query=} against object:")
+                print(json.dumps(obj, indent=2))
+                result = jaf_eval.eval(query, obj)
+                if type(result) == bool:
+                    if result:
+                        results.append(obj)
+                    else:
+                        print("Object did not satisfy the query.")
+                else:
+                    print(f"Retuned a non-boolean value: {result}")
+
             else:
-                logger.debug(f"Skipping non-dictionary object: {obj}")
+                print("Skipping non-dictionary object.")
     except jafError as e:
         logger.error(f"Failed to evaluate query: {e}")
         raise

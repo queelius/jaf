@@ -1,0 +1,589 @@
+{
+    "predicates": {
+      "eq?": {
+        "type": "lambda",
+        "code": "lambda x1, x2, _: x1 == x2",
+        "args": 3,
+        "description": "Checks if x1 is equal to x2."
+      },
+      "neq?": {
+        "type": "lambda",
+        "code": "lambda args, obj: jaf_eval.eval_oper(args[0], obj) != jaf_eval.eval_oper(args[1], obj)",
+        "args": 2,
+        "description": "Checks if the evaluation of the first argument is not equal to the second."
+      },
+      "gt?": {
+        "type": "lambda",
+        "code": "lambda x1, x2, _: x1 > x2",
+        "args": 3,
+        "description": "Checks if x1 is greater than x2."
+      },
+      "gte?": {
+        "type": "lambda",
+        "code": "lambda args, obj: jaf_eval.eval_oper(args[0], obj) >= jaf_eval.eval_oper(args[1], obj)",
+        "args": 2,
+        "description": "Checks if the evaluation of the first argument is greater than or equal to the second."
+      },
+      "lt?": {
+        "type": "lambda",
+        "code": "lambda x1, x2, _: x1 < x2",
+        "args": 3,
+        "description": "Checks if x1 is less than x2."
+      },
+      "lte?": {
+        "type": "lambda",
+        "code": "lambda args, obj: jaf_eval.eval_oper(args[0], obj) <= jaf_eval.eval_oper(args[1], obj)",
+        "args": 2,
+        "description": "Checks if the evaluation of the first argument is less than or equal to the second."
+      },
+      "in?": {
+        "type": "lambda",
+        "code": "lambda x1, x2, _: x1 in x2",
+        "args": 3,
+        "description": "Checks if x1 is in x2."
+      },
+      "empty?": {
+        "type": "lambda",
+        "code": "lambda args, _: not args",
+        "args": 2,
+        "description": "Checks if the arguments are empty."
+      },
+      "path-exists?": {
+        "type": "lambda",
+        "code": "lambda path, obj: path_exists(path, obj)",
+        "args": 2,
+        "description": "Checks if the specified path exists in the object."
+      },
+      "starts-with?": {
+        "type": "lambda",
+        "code": "lambda start, value, _: value.startswith(start)",
+        "args": 3,
+        "description": "Checks if the value starts with the specified start string."
+      },
+      "ends-with?": {
+        "type": "lambda",
+        "code": "lambda end, value, _: value.endswith(end)",
+        "args": 3,
+        "description": "Checks if the value ends with the specified end string."
+      }
+    },
+    "string_matching": {
+      "regex-match?": {
+        "type": "lambda",
+        "code": "lambda pattern, value, _: re.match(pattern, value) is not None",
+        "args": 3,
+        "description": "Performs a regex match on the first argument with the pattern provided in the second argument."
+      },
+      "close-match?": {
+        "type": "lambda",
+        "code": "lambda args, obj: rapidfuzz.fuzz.partial_ratio(args[0], args[1]) > 90",
+        "args": 2,
+        "description": "Checks if the partial ratio between two strings is greater than 90."
+      },
+      "partial-match?": {
+        "type": "lambda",
+        "code": "lambda args, obj: rapidfuzz.fuzz.partial_ratio(args[0], args[1]) > 90",
+        "args": 2,
+        "description": "Checks for a partial match between two strings with a threshold of 90."
+      }
+    },
+    "logical_operators": {
+      "and": {
+        "type": "lambda",
+        "code": "lambda *args, _: all(args)",
+        "args": -1,
+        "description": "Returns True if all arguments are True."
+      },
+      "or": {
+        "type": "lambda",
+        "code": "lambda *args, _: any(args)",
+        "args": -1,
+        "description": "Returns True if any argument is True."
+      },
+      "not": {
+        "type": "lambda",
+        "code": "lambda x, _: not x",
+        "args": 2,
+        "description": "Returns the logical NOT of the argument."
+      }
+    },
+    "functions": {
+      "path": {
+        "type": "lambda",
+        "code": "lambda path, obj: get_path_value(path, obj)",
+        "args": 2,
+        "description": "Retrieves the value at the specified path in the object."
+      },
+      "if": {
+        "type": "lambda",
+        "code": "lambda cond, true, false, _: true if cond else false",
+        "args": 4,
+        "description": "Returns the true branch if condition is met, else the false branch."
+      },
+      "cond": {
+        "type": "lambda",
+        "code": "lambda *args, _: next((result for cond, result in args if cond), None)",
+        "args": -1,
+        "description": "Evaluates conditions and returns the result of the first true condition."
+      }
+    },
+    "list_functions": {
+      "head": {
+        "type": "lambda",
+        "code": "lambda *args, _: args[0]",
+        "args": 1,
+        "description": "Returns the first element of the list."
+      },
+      "tail": {
+        "type": "lambda",
+        "code": "lambda *args, _: args[1:]",
+        "args": 1,
+        "description": "Returns all elements of the list except the first."
+      },
+      "sort": {
+        "type": "lambda",
+        "code": "lambda lst, _: sorted(lst)",
+        "args": 2,
+        "description": "Returns a sorted version of the list."
+      },
+      "reverse": {
+        "type": "lambda",
+        "code": "lambda lst, _: lst[::-1]",
+        "args": 2,
+        "description": "Returns a reversed version of the list."
+      },
+      "len": {
+        "type": "lambda",
+        "code": "lambda lst, _: len(lst)",
+        "args": 2,
+        "description": "Returns the length of the list."
+      },
+      "nth": {
+        "type": "lambda",
+        "code": "lambda lst, n, _: lst[n]",
+        "args": 3,
+        "description": "Returns the nth element of the list."
+      },
+      "merge": {
+        "type": "lambda",
+        "code": "lambda lst, _: {k: v for d in lst for k, v in d.items()}",
+        "args": 2,
+        "description": "Merges a list of dictionaries into a single dictionary."
+      },
+      "slice": {
+        "type": "lambda",
+        "code": "lambda lst, start, end, _: lst[start:end]",
+        "args": 4,
+        "description": "Returns a slice of the list from start to end."
+      }
+    },
+    "type_conversions": {
+      "dict": {
+        "type": "lambda",
+        "code": "lambda *args, _: dict(args)",
+        "args": -1,
+        "description": "Converts arguments into a dictionary."
+      },
+      "list": {
+        "type": "lambda",
+        "code": "lambda *args, _: list(args)",
+        "args": -1,
+        "description": "Converts arguments into a list."
+      },
+      "bool": {
+        "type": "lambda",
+        "code": "lambda x, _: bool(x)",
+        "args": 2,
+        "description": "Converts the argument to a boolean."
+      },
+      "str": {
+        "type": "lambda",
+        "code": "lambda x, _: str(x)",
+        "args": 2,
+        "description": "Converts the argument to a string."
+      },
+      "int": {
+        "type": "lambda",
+        "code": "lambda x, _: int(x)",
+        "args": 2,
+        "description": "Converts the argument to an integer."
+      }
+    },
+    "datetime_functions": {
+      "now": {
+        "type": "lambda",
+        "code": "lambda _: datetime.datetime.now()",
+        "args": 1,
+        "description": "Returns the current datetime."
+      },
+      "date": {
+        "type": "lambda",
+        "code": "lambda x, _: datetime.datetime.strptime(x, '%Y-%m-%d')",
+        "args": 2,
+        "description": "Parses a date string into a datetime object."
+      },
+      "time": {
+        "type": "lambda",
+        "code": "lambda x, _: datetime.datetime.strptime(x, '%H:%M:%S')",
+        "args": 2,
+        "description": "Parses a time string into a datetime object."
+      },
+      "datetime": {
+        "type": "lambda",
+        "code": "lambda x, _: datetime.datetime.strptime(x, '%Y-%m-%d %H:%M:%S')",
+        "args": 2,
+        "description": "Parses a datetime string into a datetime object."
+      },
+      "timestamp": {
+        "type": "lambda",
+        "code": "lambda x, _: datetime.datetime.fromtimestamp(x)",
+        "args": 2,
+        "description": "Converts a timestamp to a datetime object."
+      },
+      "format-date": {
+        "type": "lambda",
+        "code": "lambda x, fmt, _: x.strftime(fmt)",
+        "args": 3,
+        "description": "Formats a datetime object into a string based on the provided format."
+      },
+      "add-time": {
+        "type": "lambda",
+        "code": "lambda x, y, _: x + datetime.timedelta(seconds=y)",
+        "args": 3,
+        "description": "Adds a timedelta of y seconds to datetime object x."
+      },
+      "sub-time": {
+        "type": "lambda",
+        "code": "lambda x, y, _: x - datetime.timedelta(seconds=y)",
+        "args": 3,
+        "description": "Subtracts a timedelta of y seconds from datetime object x."
+      },
+      "diff-time": {
+        "type": "lambda",
+        "code": "lambda x, y, _: x - y",
+        "args": 3,
+        "description": "Calculates the difference between two datetime objects."
+      }
+    },
+    "meta_programming_functions": {
+      "eval": {
+        "type": "lambda",
+        "code": "lambda expr, obj: jaf_eval.eval(expr, obj)",
+        "args": 2,
+        "description": "Evaluates an expression in the context of the given object."
+      },
+      "apply": {
+        "type": "lambda",
+        "code": "lambda func, lst, obj: func(lst, obj)",
+        "args": 3,
+        "description": "Applies a function to a list within the context of an object."
+      },
+      "quote": {
+        "type": "lambda",
+        "code": "lambda x, _: x",
+        "args": 2,
+        "description": "Returns the argument without evaluating it."
+      }
+    },
+    "dictionary_functions": {
+      "keys": {
+        "type": "lambda",
+        "code": "lambda obj: obj.keys()",
+        "args": 1,
+        "description": "Returns the keys of the dictionary."
+      },
+      "values": {
+        "type": "lambda",
+        "code": "lambda obj: obj.values()",
+        "args": 1,
+        "description": "Returns the values of the dictionary."
+      },
+      "get-value": {
+        "type": "lambda",
+        "code": "lambda key, obj: obj[key]",
+        "args": 2,
+        "description": "Retrieves the value for the specified key from the dictionary."
+      },
+      "get-base-obj": {
+        "type": "lambda",
+        "code": "lambda obj: obj",
+        "args": 1,
+        "description": "Returns the base object."
+      }
+    },
+    "string_functions": {
+      "upper-case": {
+        "type": "lambda",
+        "code": "lambda s, _: s.upper()",
+        "args": 2,
+        "description": "Converts the string to uppercase."
+      },
+      "lower-case": {
+        "type": "lambda",
+        "code": "lambda s, _: s.lower()",
+        "args": 2,
+        "description": "Converts the string to lowercase."
+      },
+      "concat": {
+        "type": "lambda",
+        "code": "lambda lst, _: ''.join(lst)",
+        "args": 2,
+        "description": "Concatenates a list of strings into a single string."
+      }
+    },
+    "higher_order_functions": {
+      "map": {
+        "type": "lambda",
+        "code": "lambda lst, func, obj: [func(item, obj) for item in lst]",
+        "args": 3,
+        "description": "Applies a function to each item in the list."
+      },
+      "filter": {
+        "type": "lambda",
+        "code": "lambda lst, func, obj: [item for item in lst if func(item, obj)]",
+        "args": 3,
+        "description": "Filters the list by applying a function to each item."
+      },
+      "reduce": {
+        "type": "lambda",
+        "code": "lambda lst, func, obj: functools.reduce(func, lst)",
+        "args": 3,
+        "description": "Reduces the list to a single value by applying a function cumulatively."
+      },
+      "gather": {
+        "type": "lambda",
+        "code": "lambda lst, func, obj: [item for item in lst if func(item, obj)]",
+        "args": 3,
+        "description": "Gathers items from the list that satisfy the function condition."
+      },
+      "zip": {
+        "type": "lambda",
+        "code": "lambda *args, _: list(zip(*args))",
+        "args": -1,
+        "description": "Zips multiple lists into a list of tuples."
+      }
+    },
+    "math_functions": {
+      "sum": {
+        "type": "lambda",
+        "code": "lambda lst, _: sum(lst)",
+        "args": 2,
+        "description": "Returns the sum of the list elements."
+      },
+      "max": {
+        "type": "lambda",
+        "code": "lambda lst, _: max(lst)",
+        "args": 2,
+        "description": "Returns the maximum element in the list."
+      },
+      "min": {
+        "type": "lambda",
+        "code": "lambda lst, _: min(lst)",
+        "args": 2,
+        "description": "Returns the minimum element in the list."
+      },
+      "abs": {
+        "type": "lambda",
+        "code": "lambda x, _: abs(x)",
+        "args": 2,
+        "description": "Returns the absolute value of the argument."
+      },
+      "round": {
+        "type": "lambda",
+        "code": "lambda x, ndigits, _: round(x, ndigits)",
+        "args": 3,
+        "description": "Rounds the number x to the specified number of digits."
+      },
+      "pow": {
+        "type": "lambda",
+        "code": "lambda x, y, _: math.pow(x, y)",
+        "args": 3,
+        "description": "Raises x to the power of y."
+      },
+      "sqrt": {
+        "type": "lambda",
+        "code": "lambda x, _: math.sqrt(x)",
+        "args": 2,
+        "description": "Returns the square root of x."
+      },
+      "log": {
+        "type": "lambda",
+        "code": "lambda x, base, _: math.log(x, base)",
+        "args": 3,
+        "description": "Calculates the logarithm of x with the specified base."
+      },
+      "ln": {
+        "type": "lambda",
+        "code": "lambda x, _: math.log(x)",
+        "args": 2,
+        "description": "Calculates the natural logarithm of x."
+      },
+      "exp": {
+        "type": "lambda",
+        "code": "lambda x, _: math.exp(x)",
+        "args": 2,
+        "description": "Calculates the exponential of x."
+      }
+    },
+    "statistical_functions": {
+      "stddev": {
+        "type": "lambda",
+        "code": "lambda args, obj: statistics.stdev(args)",
+        "args": 1,
+        "description": "Calculates the standard deviation of the arguments."
+      },
+      "mean": {
+        "type": "lambda",
+        "code": "lambda args, obj: statistics.mean(args)",
+        "args": 1,
+        "description": "Calculates the mean of the arguments."
+      },
+      "median": {
+        "type": "lambda",
+        "code": "lambda args, obj: statistics.median(args)",
+        "args": 1,
+        "description": "Calculates the median of the arguments."
+      },
+      "mode": {
+        "type": "lambda",
+        "code": "lambda args, obj: statistics.mode(args)",
+        "args": 1,
+        "description": "Calculates the mode of the arguments."
+      },
+      "variance": {
+        "type": "lambda",
+        "code": "lambda args, obj: statistics.variance(args)",
+        "args": 1,
+        "description": "Calculates the variance of the arguments."
+      },
+      "percentile": {
+        "type": "lambda",
+        "code": "lambda args, obj: np.percentile(args, 50)",
+        "args": 1,
+        "description": "Calculates the 50th percentile of the arguments."
+      },
+      "correlation": {
+        "type": "lambda",
+        "code": "lambda args, obj: np.corrcoef(args)",
+        "args": 1,
+        "description": "Calculates the correlation coefficient matrix of the arguments."
+      },
+      "covariance": {
+        "type": "lambda",
+        "code": "lambda args, obj: np.cov(args)",
+        "args": 1,
+        "description": "Calculates the covariance matrix of the arguments."
+      }
+    },
+    "random_sampling_functions": {
+      "normal-distribution": {
+        "type": "lambda",
+        "code": "lambda args, obj: np.random.normal(*args)",
+        "args": 1,
+        "description": "Generates a sample from a normal distribution."
+      },
+      "uniform-distribution": {
+        "type": "lambda",
+        "code": "lambda args, obj: np.random.uniform(*args)",
+        "args": 1,
+        "description": "Generates a sample from a uniform distribution."
+      },
+      "exponential-distribution": {
+        "type": "lambda",
+        "code": "lambda args, obj: np.random.exponential(*args)",
+        "args": 1,
+        "description": "Generates a sample from an exponential distribution."
+      },
+      "poisson-distribution": {
+        "type": "lambda",
+        "code": "lambda args, obj: np.random.poisson(*args)",
+        "args": 1,
+        "description": "Generates a sample from a Poisson distribution."
+      },
+      "binomial-distribution": {
+        "type": "lambda",
+        "code": "lambda args, obj: np.random.binomial(*args)",
+        "args": 1,
+        "description": "Generates a sample from a binomial distribution."
+      },
+      "chi-square-distribution": {
+        "type": "lambda",
+        "code": "lambda args, obj: np.random.chisquare(*args)",
+        "args": 1,
+        "description": "Generates a sample from a chi-square distribution."
+      },
+      "f-distribution": {
+        "type": "lambda",
+        "code": "lambda args, obj: np.random.f(*args)",
+        "args": 1,
+        "description": "Generates a sample from an F distribution."
+      },
+      "t-distribution": {
+        "type": "lambda",
+        "code": "lambda args, obj: np.random.standard_t(*args)",
+        "args": 1,
+        "description": "Generates a sample from a t-distribution."
+      },
+      "weibull-distribution": {
+        "type": "lambda",
+        "code": "lambda args, obj: np.random.weibull(*args)",
+        "args": 1,
+        "description": "Generates a sample from a Weibull distribution."
+      },
+      "log-normal-distribution": {
+        "type": "lambda",
+        "code": "lambda args, obj: np.random.lognormal(*args)",
+        "args": 1,
+        "description": "Generates a sample from a log-normal distribution."
+      },
+      "gamma-distribution": {
+        "type": "lambda",
+        "code": "lambda args, obj: np.random.gamma(*args)",
+        "args": 1,
+        "description": "Generates a sample from a gamma distribution."
+      },
+      "beta-distribution": {
+        "type": "lambda",
+        "code": "lambda args, obj: np.random.beta(*args)",
+        "args": 1,
+        "description": "Generates a sample from a beta distribution."
+      },
+      "pareto-distribution": {
+        "type": "lambda",
+        "code": "lambda args, obj: np.random.pareto(*args)",
+        "args": 1,
+        "description": "Generates a sample from a Pareto distribution."
+      },
+      "triangular-distribution": {
+        "type": "lambda",
+        "code": "lambda args, obj: np.random.triangular(*args)",
+        "args": 1,
+        "description": "Generates a sample from a triangular distribution."
+      },
+      "random-choice": {
+        "type": "lambda",
+        "code": "lambda args, obj: np.random.choice(*args)",
+        "args": 1,
+        "description": "Selects a random element from a non-empty sequence."
+      },
+      "random-sample": {
+        "type": "lambda",
+        "code": "lambda args, obj: np.random.sample(*args)",
+        "args": 1,
+        "description": "Generates random samples from a uniform distribution over [0, 1)."
+      },
+      "random-shuffle": {
+        "type": "lambda",
+        "code": "lambda args, obj: np.random.shuffle(args)",
+        "args": 1,
+        "description": "Shuffles the sequence in place."
+      },
+      "random-seed": {
+        "type": "lambda",
+        "code": "lambda args, obj: np.random.seed(*args)",
+        "args": 1,
+        "description": "Seeds the random number generator."
+      }
+    }
+  }
+  

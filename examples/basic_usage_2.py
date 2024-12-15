@@ -66,12 +66,11 @@ repos = [
 def main():
     try:
         #query_dsl = 'language eq "Python" AND stars gt 100'
-        #query = [
-        #    'and',
-        #        ['eq?', 'language', 'Python'],
-        #        ['gt?', 'stars', 100]
-        #]
-        query = ['eq?', ['path', 'language'], 'Python']
+        query = [
+            'and',
+                ['eq?', 'language', 'Python'],
+                ['gt?', 'stars', 100]
+        ]
         filter_repos = jaf(repos, query)
         print("Filtered Repositories:", filter_repos)
     except jafError as e:

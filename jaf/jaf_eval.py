@@ -1,10 +1,35 @@
 import datetime
 import re
 import rapidfuzz
-import random
 import functools
 import math
-import statistics
+
+def get_path_value(path, obj):
+    """
+    Retrieves a value from the nested dictionary using dot notation.
+
+    :param obj: The dictionary object.
+    :param path: The dot-separated path string.
+    :return: The retrieved value.
+    """
+    parts = path.split('.')
+    cur = obj
+    for part in parts:
+        if isinstance(cur, dict) and part in cur:
+            cur = cur[part]
+        else:
+            return None
+    return cur
+
+def path_exists(path, obj):
+    """
+    Checks if the path exists in the object.
+
+    :param obj: The dictionary object.
+    :param path: The dot-separated path string.
+    :return: Boolean indicating if the path exists.
+    """
+    return get_path_value(path, obj) is not None
 
 class jaf_eval:
     """
@@ -12,80 +37,130 @@ class jaf_eval:
     object in the array. See `jaf.py` for the class that applies to the entire
     array.
     """
-
     funcs = {
-        'eq?': (lambda args, obj: jaf.eval_oper(args[0], obj) == jaf.eval_oper(args[1], obj), 2),
-        'gt?': (lambda args, obj: jaf.eval_oper(args[0], obj) > jaf.eval_oper(args[1], obj), 2),
-        'lt?': (lambda args, obj: jaf.eval_oper(args[0], obj) < jaf.eval_oper(args[1], obj), 2),
-        'contains?': (lambda args, obj: jaf.eval_oper(args[1], obj) in jaf.eval_oper(args[0], obj), 2),
-        'in?': (lambda args, obj: jaf.eval_oper(args[1], obj) in jaf.eval_oper(args[0], obj), 2),
-        'lower-case': (lambda args, obj: jaf.eval_oper(args[0], obj).lower(), 1),
-        'date-diff': (lambda args, obj: abs(jaf.eval_oper(args[0], obj) - jaf.eval_oper(args[1], obj)), 2),
-        'now': (lambda _, __: datetime.datetime.now().year, 0),
-        'starts-with?': (lambda args, obj: jaf.eval_oper(args[0], obj).startswith(jaf.eval_oper(args[1], obj)), 2),
-        'ends-with?': (lambda args, obj: jaf.eval_oper(args[0], obj).endswith(jaf.eval_oper(args[1], obj)), 2),
-        'neq?': (lambda args, obj: jaf.eval_oper(args[0], obj) != jaf.eval_oper(args[1], obj), 2),
-        'gte?': (lambda args, obj: jaf.eval_oper(args[0], obj) >= jaf.eval_oper(args[1], obj), 2),
-        'lte?': (lambda args, obj: jaf.eval_oper(args[0], obj) <= jaf.eval_oper(args[1], obj), 2),
-        'empty?': (lambda args, obj: not jaf.eval(args[0], obj), 1),
-        'xor': (lambda args, obj: jaf.eval(args[0], obj) ^ jaf.eval(args[1], obj), 2),
-        'true': (lambda _, __: True, 0),
-        'false': (lambda _, __: False, 0),
-        'null': (lambda _, __: None, 0),
-        'upper-case': (lambda args, obj: jaf.eval_oper(args[0], obj).upper(), 1),
-        'random-choice': (lambda args, obj: random.choice(args), -1),
-        'gauss': (lambda args, obj: random.gauss(jaf.eval_oper(args[0], obj), jaf.eval_oper(args[1], obj)), 2),
+        # predicates
+        'eq?': (lambda x1, x2, _: x1 == x2, 3),
+        'neq?': (lambda args, obj: jaf_eval.eval_oper(args[0], obj) != jaf_eval.eval_oper(args[1], obj), 2),
+        'gt?': (lambda x1, x2, _: x1 > x2, 3),
+        'gte?': (lambda args, obj: jaf_eval.eval_oper(args[0], obj) >= jaf_eval.eval_oper(args[1], obj), 2),
+        'lt?': (lambda x1, x2, _: x1 < x2, 3),
+        'lte?': (lambda args, obj: jaf_eval.eval_oper(args[0], obj) <= jaf_eval.eval_oper(args[1], obj), 2),
+        'in?': (lambda x1, x2, _: x1 in x2, 3),
+        'empty?': (lambda args, _: not args, 2),
+        'path-exists?': (lambda path, obj: path_exists(path, obj), 2),
+        'starts-with?': (lambda start, value, _: value.startswith(start), 3),
+        'ends-with?': (lambda end, value, _: value.endswith(end), 3),
+
+        # string matching
+        'regex-match?': (lambda pattern, value, _: re.match(pattern, value) is not None, 3),
+        'close-match?': (lambda args, obj: rapidfuzz.fuzz.partial_ratio(args[0], args[1]) > 90, 2),
+        'partial-match?': (lambda args, obj: rapidfuzz.fuzz.partial_ratio(args[0], args[1]) > 90, 2),
+
+        # logical operators
+        'and': (lambda *args, _: all(args), -1),
+        'or': (lambda *args, _: any(args), -1),
+        'not': (lambda x, _: not x, 2),
+
+        # functions
+        'path': (lambda path, obj: get_path_value(path, obj), 2),
+        'if': (lambda cond, true, false, _: true if cond else false, 4),
+        'cond': (lambda *args, _: next((result for cond, result in args if cond), None), -1),
+
+        # list functions
+        'head': (lambda *args, _: args[0], 1),
+        'tail': (lambda *args, _: args[1:], 1),
+
+        # type conversions
+        'dict': (lambda *args, _: dict(args), -1),
+        'list': (lambda *args, _: list(args), -1),
+        'bool': (lambda x, _: bool(x), 2),
+        'str': (lambda x, _: str(x), 2),
+        'int': (lambda x, _: int(x), 2),
+
+        # datetime functions
+        'now': (lambda: datetime.datetime.now(), 1),
+        'date': (lambda x, _: datetime.datetime.strptime(x, '%Y-%m-%d'), 2),
+        'time': (lambda x, _: datetime.datetime.strptime(x, '%H:%M:%S'), 2),
+        'datetime': (lambda x, _: datetime.datetime.strptime(x, '%Y-%m-%d %H:%M:%S'), 2),
+        'timestamp': (lambda x, _: datetime.datetime.fromtimestamp(x), 2),
+        'format-date': (lambda x, fmt, _: x.strftime(fmt), 3),
+        'add-time': (lambda x, y, _: x + datetime.timedelta(seconds=y), 3),
+        'sub-time': (lambda x, y, _: x - datetime.timedelta(seconds=y), 3),
+        'diff-time': (lambda x, y, _: x - y, 3),
+
+        # meta-programming functions
+        'eval': (lambda expr, obj: jaf_eval.eval(expr, obj), 2),
+        'apply': (lambda func, lst, obj: func(lst, obj), 3),
+        'quote': (lambda x, _: x, 2),
+
+        # dictionary functions
+        'keys': (lambda obj: obj.keys(), 1),
+        'values': (lambda obj: obj.values(), 1),
+        'get-value': (lambda key, obj: obj[key], 2),
+        'get-base-obj': (lambda obj: obj, 1),
+
+        # list functions
+        'sort': (lambda lst, _: sorted(lst), 2),
+        'reverse': (lambda lst, _: lst[::-1], 2),
+        'len': (lambda lst, _: len(lst), 2),
+        'nth': (lambda lst, n, _: lst[n], 3),
+        'merge': (lambda lst, _: {k: v for d in lst for k, v in d.items()}, 2),
+        'slice': (lambda lst, start, end, _: lst[start:end], 4),
+
+        # string functions
+        'upper-case': (lambda s, _: s.upper(), 2),
+        'lower-case': (lambda s, _: s.lower(), 2),
+        'concat': (lambda lst, _: ''.join(lst), 2),
+
+        # higher-order functions       
+        'map': (lambda lst, func, obj: [func(item, obj) for item in lst], 3),
+        'filter': (lambda lst, func, obj: [item for item in lst if func(item, obj)], 3),
+        'reduce': (lambda lst, func, obj: functools.reduce(func, lst), 3),
+        'gather': (lambda lst, func, obj: [item for item in lst if func(item, obj)], 3),
+        'zip': (lambda *args, _: list(zip(*args)), -1),
+
+        # math functions
+        'sum': (lambda lst, _: sum(lst), 2),
+        'max': (lambda lst, _: max(lst), 2),
+        'min': (lambda lst, _: min(lst), 2),
+        'abs': (lambda x, _: abs(x), 2),
+        'round': (lambda x, ndigits, _: round(x, ndigits), 3),
+        'pow': (lambda x, y, _: math.pow(x, y), 3),
+        'sqrt': (lambda x, _: math.sqrt(x), 2),
+        'log': (lambda x, base, _: math.log(x, base), 3),
+        'ln': (lambda x, _: math.log(x), 2),
+        'exp': (lambda x, _: math.exp(x), 2),
+
+        # statistical functions
         'stddev': (lambda args, obj: statistics.stdev(args), 1),
         'mean': (lambda args, obj: statistics.mean(args), 1),
         'median': (lambda args, obj: statistics.median(args), 1),
         'mode': (lambda args, obj: statistics.mode(args), 1),
-        'regex-match?': (lambda args, obj: re.match(jaf.eval_oper(args[1], obj), jaf.eval_oper(args[0], obj)), 2),
-        'close-match?': (lambda args, obj: rapidfuzz.fuzz.partial_ratio(jaf.eval_oper(args[0], obj), jaf.eval_oper(args[1], obj)) > 90, 2),
-        'partial-match?': (lambda args, obj: rapidfuzz.fuzz.partial_ratio(jaf.eval_oper(args[0], obj), jaf.eval_oper(args[1], obj)) > 90, 2),
-        'random': (lambda _, __: random.random(), 0),
-        'random-int': (lambda args, _: random.randint(jaf.eval_oper(args[0], obj), jaf.eval_oper(args[1], obj)), 2),
-        'and': (lambda args, obj: all(jaf.eval(sub, obj) for sub in args), -1),
-        'or': (lambda args, obj: any(jaf.eval(sub, obj) for sub in args), -1),
-        'not': (lambda args, obj: not jaf.eval(args[0], obj), 1),
-        'if': (lambda args, obj: jaf.eval(args[1], obj) if jaf.eval(args[0], obj) else jaf.eval(args[2], obj), 3),
-        'cond': (lambda args, obj: next(jaf.eval(sub[1], obj) for sub in args if jaf.eval(sub[0], obj)), -1),
-        'quote': (lambda args, _: args[0], 1),
-        'list': (lambda args, _: args, -1),
-        'head': (lambda args, _: args[0], 1),
-        'tail': (lambda args, _: args[1:], 1),
-        'concat': (lambda args, _: ''.join(args), -1),
-        'len': (lambda args, _: len(args[0]), 1),
-        'nth': (lambda args, _: args[0][args[1]], 2),
-        'map': (lambda args, _: [jaf.eval([args[0], sub], obj) for sub in args[1]], 2),
-        'filter': (lambda args, _: [sub for sub in args[1] if jaf.eval([args[0], sub], obj)], 2),
-        'reduce': (lambda args, _: functools.reduce(jaf.eval(args[0], obj), args[1]), 2),
-        'apply': (lambda args, _: jaf.eval(args[0], obj)(*args[1:]), -1),
-        'eval': (lambda args, _: jaf.eval(jaf.eval(args[0], obj), obj), 1),
-        'gather': (lambda args, _: {k: v for k, v in args}, -1),
-        'get': (lambda args, _: jaf.get_val(obj, args[0]), 1),
-        'set': (lambda args, _: jaf.set_val(obj, args[0], args[1]), 2),
-        'del': (lambda args, _: jaf.del_val(obj, args[0]), 1),
-        'keys': (lambda args, _: obj.keys(), 0),
-        'values': (lambda args, _: obj.values(), 0),
-        'items': (lambda args, _: obj.items(), 0),
-        'merge': (lambda args, _: {**args[0], **args[1]}, 2),
-        'sort': (lambda args, _: sorted(args[0]), 1),
-        'reverse': (lambda args, _: list(reversed(args[0])), 1),
-        'slice': (lambda args, _: args[0][args[1]:args[2]], 3),
-        'zip': (lambda args, _: list(zip(*args)), -1),
-        'sum': (lambda args, _: sum(args[0]), 1),
-        'max': (lambda args, _: max(args[0]), 1),
-        'min': (lambda args, _: min(args[0]), 1),
-        'abs': (lambda args, _: abs(args[0]), 1),
-        'round': (lambda args, _: round(args[0]), 1),
-        'pow': (lambda args, _: pow(args[0], args[1]), 2),
-        'sqrt': (lambda args, _: pow(args[0], 0.5), 1),
-        'log': (lambda args, _: math.log(args[0], args[1]) if len(args) == 2 else math.log(args[0]), 1),
-        'exp': (lambda args, _: math.exp(args[0]), 1),
-        'sin': (lambda args, _: math.sin(args[0]), 1),
-        'cos': (lambda args, _: math.cos(args[0]), 1),
-        'tan': (lambda args, _: math.tan(args[0]), 1),
-        'asin': (lambda args, _: math.asin(args[0]), 1)
+        'variance': (lambda args, obj: statistics.variance(args), 1),
+        'percentile': (lambda args, obj: np.percentile(args, 50), 1),
+        'correlation': (lambda args, obj: np.corrcoef(args), 1),
+        'covariance': (lambda args, obj: np.cov(args), 1),
+
+        # random sampling functions
+        'normal-distribution': (lambda args, obj: np.random.normal(args), 1),
+        'uniform-distribution': (lambda args, obj: np.random.uniform(args), 1),
+        'exponential-distribution': (lambda args, obj: np.random.exponential(args), 1),
+        'poisson-distribution': (lambda args, obj: np.random.poisson(args), 1),
+        'binomial-distribution': (lambda args, obj: np.random.binomial(args), 1),
+        'chi-square-distribution': (lambda args, obj: np.random.chisquare(args), 1),
+        'f-distribution': (lambda args, obj: np.random.f(args), 1),
+        't-distribution': (lambda args, obj: np.random.t(args), 1),
+        'weibull-distribution': (lambda args, obj: np.random.weibull(args), 1),
+        'log-normal-distribution': (lambda args, obj: np.random.lognormal(args), 1),
+        'gamma-distribution': (lambda args, obj: np.random.gamma(args), 1),
+        'beta-distribution': (lambda args, obj: np.random.beta(args), 1),
+        'pareto-distribution': (lambda args, obj: np.random.pareto(args), 1),
+        'triangular-distribution': (lambda args, obj: np.random.triangular(args), 1),
+        'uniform-distribution': (lambda args, obj: np.random.uniform(args), 1),
+        'random-choice': (lambda args, obj: np.random.choice(args), 1),
+        'random-sample': (lambda args, obj: np.random.sample(args), 1),
+        'random-shuffle': (lambda args, obj: np.random.shuffle(args), 1),
+        'random-seed': (lambda args, obj: np.random.seed(args), 1)
     }
 
     @staticmethod
@@ -101,90 +176,47 @@ class jaf_eval:
             raise ValueError("Invalid query format.")
 
         op = query[0].lower()
-        if op in jaf.funcs:
-            func, nargs = jaf.funcs[op]
-            args = query[1:]
-            if len(args) != nargs:
-                raise ValueError(f"'{op}' expects {nargs} arguments.")
-            return func(args, obj)
-
-        else:
+        if op not in jaf_eval.funcs:
             raise ValueError(f"Unknown operator: {op}")
 
-    def eval_oper(oper, obj):
+        print(f"Operator: {op}")
+
+        func, nargs = jaf_eval.funcs[op]
+        print("func_args", func.__code__.co_varnames)
+        print("func_nargs", nargs)
+
+        args = query[1:] + [obj]
+        print(f"Arguments: {args}")
+        if nargs != -1 and len(args) != nargs:
+            raise ValueError(f"'{op}' expects {nargs} arguments.")
+
+        args = [jaf_eval.eval_oper(arg, obj) for arg in args]
+        print(f"Evaluated arguments: {args}")
+
+        # Call the function with the evaluated arguments
+        result = func(*args)
+        print(f"Result: {result}")
+
+        return result
+
+    @staticmethod
+    def eval_oper(expression, obj):
         """
         Evaluates an operand which can be a value or a sub-query.
 
-        :param operand: The operand to evaluate.
+        :param expression: The expression to evaluate.
         :param obj: The dictionary object.
         :return: The evaluated value.
         """
-        if isinstance(oper, list):
-            return eval(oper, obj)
-        elif isinstance(oper, str):
-            # Retrieve the value from the object using dot notation
-            return jaf.get_val(obj, oper)
+        print(f"eval_oper::expression: {expression}")
+        print(f"eval_oper::object: {obj}")
+
+        if isinstance(expression, list):
+            print(f"Evaluating expression: {expressionr}")
+            val = jaf_eval.eval(expression, obj)
+            print(f"Evaluated expression: {val}")
+            return val
         else:
-            # Literal value
-            return oper
+            print(f"Self-evaluating expression: {expression}")
+            return expression
 
-    @staticmethod
-    def get_val(obj, path):
-        """
-        Retrieves a value from the nested dictionary using dot notation.
-
-        :param obj: The dictionary object.
-        :param path: The dot-separated path string.
-        :return: The retrieved value.
-        """
-        parts = path.split('.')
-        cur = obj
-        for part in parts:
-            if isinstance(cur, dict) and part in cur:
-                cur = cur[part]
-            else:
-                raise KeyError(f"Path '{path}' not found in the object.")
-        return cur
-
-# Example Usage
-if __name__ == "__main__":
-    query = [
-        'and',
-            [
-                'or',
-                    ['gt', ['date-diff', ['now'], 'owner.dob'], 18]
-            ],
-            ['eq', ['lower-case', 'owner.name'], 'alex'],
-            ['lt', 'owner.age', 80],
-        [
-            'and',
-                ['contains', 'asset.description', 'bitcoin'],
-                ['gt', 'asset.amount', 1]
-        ]
-    ]
-
-    obj = {
-        'owner': {
-            'name': 'Alex',
-            'dob': 1985,  # Assuming 'dob' is the year of birth
-            'age': 49,
-            'city': 'no where'
-        },
-        'asset': {
-            'description': 'bitcoin',
-            'amount': 34
-        }
-    }
-
-    j = jaf()
-
-    # Mock 'now' function to return 2024 for consistent date-diff calculation
-    def mock_now(args, obj):
-        return 2024
-    j.funcs['now'] = (mock_now, 0)
-
-    try:
-        result = eval(query, obj)
-        print("Does the object satisfy the query?", result)
-    except Exception as e:
-        print("Error during evaluation:", e)
