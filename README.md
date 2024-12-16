@@ -21,7 +21,7 @@ The predicates are used to compare values, while the operators are used to combi
 predicates or perform other operations that make the desired comparison possible
 or the desired result achievable.
 
-> *Note*: that we do not use operators like `==` or `>`, but instead use `eq?` and
+> *Note*: We do not use operators like `==` or `>`, but instead use `eq?` and
 > `gt?`. The primary reason for this choice is that we provide a command-line
 > tool, and if we used `>` it would be interpreted as a redirection operator
 > by the shell.
@@ -113,20 +113,19 @@ OR: "OR"
 AND: "AND"
 ```
 
-For example, the query
+For example, consider the following query AST:
 
 ```python
 ['and',
     ['eq?', ['lower-case', ['path', 'language']], 'python'],
-    [['path', 'pred.name'], ['path', 'stars'], 100],
+    ['gt?', ['path', 'stars'], 100],
     ['eq?', ['path','owner.name'], ['path': 'user.name']]]
 ```
 
-We also provide a DSL (Domain-Specific Language) that allows users to craft
-queries using an intuitive infix notation. For example, consider the following query:
+It has an equivalent DSL given by:
 
 ```text
-(lower-case :language) eq? "python" AND :stars (:pred-name) 100 AND :owner.name eq? :user.name
+(lower-case :language) eq? "python" AND :stars gt? 100 AND :owner.name eq? :user.name
 ```
 
 We see that we have a special notation for `path` commands: we prefix the field
