@@ -1,0 +1,5 @@
+[
+    ["if", ["path", "use_gt"], "gt?", "lt?"],
+    ["path", "stars"],
+    100
+]

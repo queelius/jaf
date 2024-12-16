@@ -1,0 +1,1 @@
+(lower-case :language) eq? "python" AND (:owner.*.active gt? 0 OR :owner.active gt? 0)

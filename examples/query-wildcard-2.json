@@ -1,0 +1,5 @@
+[ "and",
+    ["eq?", ["lower-case", ["path", "language"]], "python"],
+    ["or",  ["gt?", ["path", "owner.*.active"], 0],
+            ["gt?", ["path", "owner.active"], 0]]
+]

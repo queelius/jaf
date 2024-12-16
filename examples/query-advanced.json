@@ -1,0 +1,6 @@
+["or",
+    ["eq?", ["lower-case", ["path", "owner.name"]], "alex"],
+    ["and",
+        ["in?", "bitcoin", ["path", "asset.description"]],
+        ["gt?", ["path", "asset.amount"], 1]]
+]

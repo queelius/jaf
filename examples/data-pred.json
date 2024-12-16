@@ -1,0 +1,38 @@
+[
+    {
+        "predicate-name": "gt?",
+        "owner": {
+            "name": "Bob",
+            "dob": "2000-01-01",
+            "city": "nowhere"
+        },
+        "asset": {
+            "description": "bitcoin",
+            "amount": 10.1
+        }
+    },
+    {
+        "predicate-name": "lt?",
+        "owner": {
+            "name": "Alice",
+            "dob": "2005-01-01",
+            "city": "nowhere"
+        },
+        "asset": {
+            "description": "bitcon",
+            "amount": 0.2
+        }
+    },
+    {
+        "predicate-name": "eq?",
+        "owner": {
+            "name": "Alex",
+            "dob": "1972-01-01",
+            "city": "no where"
+        },
+        "asset": {
+            "description": "bitcoin",
+            "amount": 6.8
+        }
+    }
+]

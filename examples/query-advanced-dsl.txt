@@ -1,0 +1,1 @@
+(lower-case :owner.name) eq? "alex" OR ("bitcoin" in? :asset.description AND :asset.amount gt? 1)

@@ -1,0 +1,10 @@
+[
+    {
+        "stars": 150,
+        "use_gt": true
+    },
+    {
+        "stars": 150,
+        "use_gt": false
+    }
+]
