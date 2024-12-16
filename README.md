@@ -135,6 +135,13 @@ access the value of a field in the JSON array. For example, `:owner.name` will
 access the value of the `name` field in the `owner` object where as `owner.name`
 will be interpreted as a string.
 
+Paths can also include two kinds of wildcards, `*` and `**`. The wildcard `*`
+matches any fieldname, e.g., `a.*.b.c` will match `a.d.b.c.a` (it will return `{'c': 'a'}`.
+The wildcard `**` will match any fieldname at any depth after the specified path,
+e.g., `a.**.c` will match `a.b.c.a` (it will also return `{'c': 'a'}`. You can use
+as many wildcards as you wish in a single query. If *any* of the objects denoted by
+a wildcard path satisfy the query, the object satisfies the query.
+
 The DSL is converted into the AST (see the above EBNF) before being evaluated.
 This query AST is evaluated against each element of the JSON array, and if it
 returns `True`, the corresponding index into the JSON array for that element is
