@@ -50,7 +50,11 @@ This query will filter repositories where the `language` field is equal to
 ## Query Language
 
 Queries are represented using an Abstract Syntax Tree (AST) based on nested
-lists, where each list takes the form:
+lists, where each list takes the form of `[<expressio>, <arg1>, <arg2>,...]`.
+
+We also provide a Domain-Specific Language (DSL) that allows users to craft
+queries using an intuitive infix notation. The DSL is converted into the AST
+before being evaluated. Here is the EBNF for the query language:
 
 ```ebnf
 %import common.WS
