@@ -21,6 +21,11 @@ The predicates are used to compare values, while the operators are used to combi
 predicates or perform other operations that make the desired comparison possible
 or the desired result achievable.
 
+> *Note*: that we do not use operators like `==` or `>`, but instead use `eq?` and
+> `gt?`. The primary reason for this choice is that we provide a command-line
+> tool, and if we used `>` it would be interpreted as a redirection operator
+> by the shell.
+
 For example, the `lower-case` operator is used to convert a string to lowercase before
 comparison, so that the comparison is case-insensitive. Here is an example
 query that uses the `lower-case` operator:
@@ -48,23 +53,60 @@ Queries are represented using an Abstract Syntax Tree (AST) based on nested
 lists, where each list takes the form:
 
 ```ebnf
-<query> ::= '[' <operator> { ',' <argument> }+ ']'
+%import common.WS
+%import common.ESCAPED_STRING
+%import common.SIGNED_NUMBER
+%ignore WS
 
-<operator> ::= <identifier> | <query>
+start: expr
 
-<argument> ::= <query> | <value> | <path>
+expr: bool_expr
 
-<value> ::= <string> | <number> | <boolean>
+?bool_expr: or_expr
 
-<path> ::= ':' <string>
+?or_expr: and_expr
+        | or_expr OR and_expr -> or_operation
 
-<string> ::= '"' { any character except '"' } '"'
+?and_expr: primary
+        | and_expr AND primary -> and_operation
 
-<number> ::= {digit}+ [ '.' {digit}+ ]
+?primary: operand
+       | "(" bool_expr ")"
 
-<boolean> ::= 'True' | 'False'
+?operand: condition
+       | function_call
+       | path
+       | bare_path
+       | value
 
-<identifier> ::= {letter} {letter | digit | '_' | '-' | '?'}*
+condition: operand operator operand
+
+operator: IDENTIFIER
+
+function_call: "(" IDENTIFIER operand+ ")"
+
+path: ":" path_component ("." path_component)*
+
+bare_path: path_component ("." path_component)*
+
+path_component: IDENTIFIER 
+             | STAR  
+             | DOUBLESTAR
+
+STAR: "*" 
+DOUBLESTAR: "**"
+
+value: ESCAPED_STRING
+     | NUMBER
+     | BOOLEAN
+
+BOOLEAN: "True" | "False"
+NUMBER: SIGNED_NUMBER
+
+IDENTIFIER: /[a-zA-Z][a-zA-Z0-9_\-\?]*/
+
+OR: "OR"
+AND: "AND"
 ```
 
 For example, the query
@@ -100,13 +142,19 @@ than a Boolean, e.g., `['lower-case', 'Python']` will return `'python`.
 ## Relative Advantages of AST and DSL
 
 Both have their own advantages and can be used interchangeably based on the
-user's preference. The AST is programmatic, well-structured, and can be easily
-manipulated, while the DSL is more human-readable and compact.
+user's preference. The AST is:
 
-> *Note*: that we do not use operators like `==` or `>`, but instead use `eq?` and
-> `gt?`. The primary reason for this choice is that we provide a command-line
-> tool, and if we used `>` it would be interpreted as a redirection operator
-> by the shell.
+- programmatic
+- easily manipulated
+- can be generated from a DSL
+- easily serialized for storage or transmission
+- allows for operators to be queries, facilitating some meta-programming
+
+The DSL is:
+
+- More human-readable, e.g. infix notation for logical operators
+- Easier to write and understand
+- Compact
 
 ## Installation
 
