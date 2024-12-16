@@ -14,7 +14,7 @@ def load_builtins(json_path):
     builtins = {}
     
     for name, typ, nargs, code, _ in funcs.items():
-        builtsin['name'] = load_builtin(name, typ, nargs, code)
+        builtins['name'] = load_builtin(name, typ, nargs, code)
 
     return builtins
 
@@ -34,11 +34,11 @@ def load_builtin(name, typ, nargs, code):
             
             local_scope = {}
             exec(code, globals(), local_scope)
-            f = local_scope.get(name)
+            func = local_scope.get(name)
             if func is None:
                 raise ValueError(f"Function '{name}' not found after executing code.")
 
-            return (f, nargs)
+            return (func, nargs)
             
         except Exception as e:
             raise ValueError(f"Error loading function '{name}': {e}")

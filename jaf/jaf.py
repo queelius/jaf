@@ -1,11 +1,8 @@
 from typing import List, Dict, Any, Union
 import logging
-#from .dsl.parser import dsl_parser
 from .jaf_eval import jaf_eval
-import json
+from .dsl.parse import parse_dsl
 
-# Configure logging
-logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
 class jafError(Exception):
@@ -29,26 +26,36 @@ def jaf(data: List[Dict], query: Union[List, str]) -> List[Dict]:
     if not query:
         raise jafError("No query provided.")
 
+    if isinstance(query, str):
+        # Parse the DSL string into an AST
+        try:
+            query = parse_dsl(query)
+        except Exception as e:
+            logger.error(f"Failed to parse DSL query: {e}")
+            raise
+
+    logger.debug(f"Applying {query=} to {len(data)} objects.")
+    value_results = {}
     try:
         results = []
-        for obj in data:
+        for i,  obj in enumerate(data):
             if isinstance(obj, dict):
-                print(f"Evaluating {query=} against object:")
-                print(json.dumps(obj, indent=2))
+                logger.debug(f"Evaluating {query=} against {obj=}.")
                 result = jaf_eval.eval(query, obj)
                 if type(result) == bool:
                     if result:
-                        results.append(obj)
+                        logger.debug("Object satisfied the query.")
+                        results.append(i)
                     else:
-                        print("Object did not satisfy the query.")
+                        logger.debug("Object did not satisfy the query.")
                 else:
-                    print(f"Retuned a non-boolean value: {result}")
-
+                    logger.debug(f"Retuned a non-boolean value: {result}. Skipping object.")
+                    value_results[i] = result
             else:
-                print("Skipping non-dictionary object.")
+                logger.error("Skipping non-dictionary object: {obj}.")
     except jafError as e:
         logger.error(f"Failed to evaluate query: {e}")
         raise
 
-    return results
+    return {"matching-indices" : results, "value-results": value_results}
 

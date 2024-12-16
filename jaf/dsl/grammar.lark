@@ -1,26 +1,54 @@
-?start: expr
-
-?expr: expr "AND" term   -> and_op
-     | expr "OR" term    -> or_op
-     | term
-
-?term: "NOT" term        -> not_op
-     | "(" expr ")"
-     | condition
-
-?condition: field COMPARATOR value   -> condition
-
-field: CNAME ("." CNAME)*
-
-COMPARATOR: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "contains" | "regex" | "startswith" | "endswith"
-
-value: ESCAPED_STRING      -> string
-     | SIGNED_NUMBER       -> number
-     | "true"              -> true
-     | "false"             -> false
-
-%import common.CNAME
+%import common.WS
 %import common.ESCAPED_STRING
 %import common.SIGNED_NUMBER
-%import common.WS
 %ignore WS
+
+start: expr
+
+expr: bool_expr
+
+?bool_expr: or_expr
+
+?or_expr: and_expr
+        | or_expr OR and_expr -> or_operation
+
+?and_expr: primary
+        | and_expr AND primary -> and_operation
+
+?primary: operand
+       | "(" bool_expr ")"
+
+?operand: condition
+       | function_call
+       | path
+       | bare_path
+       | value
+
+condition: operand operator operand
+
+operator: IDENTIFIER
+
+function_call: "(" IDENTIFIER operand+ ")"
+
+path: ":" path_component ("." path_component)*
+
+bare_path: path_component ("." path_component)*
+
+path_component: IDENTIFIER 
+             | STAR  
+             | DOUBLESTAR
+
+STAR: "*" 
+DOUBLESTAR: "**"
+
+value: ESCAPED_STRING
+     | NUMBER
+     | BOOLEAN
+
+BOOLEAN: "True" | "False"
+NUMBER: SIGNED_NUMBER
+
+IDENTIFIER: /[a-zA-Z][a-zA-Z0-9_\-\?]*/
+
+OR: "OR"
+AND: "AND"
