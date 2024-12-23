@@ -31,7 +31,7 @@ comparison, so that the comparison is case-insensitive. Here is an example
 query that uses the `lower-case` operator:
 
 ```python
-['and', ['lower-case', ['path', 'language']], ['eq?', 'python']]
+['and', ['eq?', ['lower-case', ['path', 'language']], 'python']]
 ```
 
 This query will filter repositories where the `language` field is equal to

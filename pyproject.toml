@@ -1,13 +1,11 @@
-# pyproject.toml
-
 [build-system]
-requires = ["setuptools>=42", "wheel"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "jaf"
-version = "0.1.0"
-description = "JSON Array Filter (jaf) is a versatile filter for JSON arrays. It is a domain-specific language (DSL) that allows you to filter JSON arrays using a simple, yet powerful syntax. Programmaticcally, the AST can be used to filter JSON arrays in a more flexible way."
+version = "0.2.0"
+description = "JSON Array Filter (`jaf`) is a versatile filter for JSON arrays. It is a domain-specific language (DSL) that allows you to filter JSON arrays using a simple, yet powerful syntax. Programmatically, the AST can be used to filter JSON arrays in a more flexible way."
 authors = [
     { name = "Alex Towell", email = "lex@metafunctor.com" }
 ]
@@ -19,8 +17,20 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
+dependencies = [
+    "lark-parser"
+]
+
+# Specify package discovery
+[tool.setuptools.packages.find]
+include = ["jaf", "jaf.*"]
+
+# Include package data
+[tool.setuptools.package-data]
+"jaf.dsl" = ["grammar.lark"]
 
 [project.urls]
 Homepage = "https://github.com/queelius/jaf"
 Documentation = "https://github.com/queelius/jaf#readme"
 Repository = "https://github.com/queelius/jaf"
+

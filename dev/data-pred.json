@@ -19,7 +19,7 @@
             "city": "nowhere"
         },
         "asset": {
-            "description": "bitcon",
+            "description": "bitcoin",
             "amount": 0.2
         }
     },

@@ -1,0 +1,26 @@
+[
+    {
+        "id": 0,
+        "name": "DataScienceRepo",
+        "language": "Python",
+        "stars": 150,
+        "forks": 30,
+        "description": "A repository for data science projects.",
+        "owner": {
+            "name": "alice",
+            "active": 1,
+            "jumps": [ 1, 3, 5, 1 ]
+        },
+        "commits": [
+            {
+                "date": "2021-01-01",
+                "count": 10
+            },
+            {
+                "date": "2021-01-02",
+                "count": 5
+            }
+        ]        
+    }
+]
+

@@ -14,6 +14,12 @@ def _path_value(path, obj):
                  - '**' matches zero or more levels of any keys.
     :return: A list of all matched values.
     """
+
+
+    if path == '$':
+        # root node
+        return [obj]
+
     parts = path.split('.')
 
     def _match_path(cur_obj, parts):
@@ -111,6 +117,10 @@ def _exists(query, obj):
 def wrap(n, func):
     """
     A generic wrapper that handles functions with varying numbers of arguments.
+    The function is expected to take `n` arguments, where `n` can be -1 for variable arguments.
+    The wrapper will generate all possible combinations of arguments and call the function with them.
+    It will then test if all evaluations are booleans and return True if any of them are True,
+    or False if all of them are False. If the results are not all booleans, it will return a list of results.
 
     :param n: Number of expected arguments. Use -1 for variable arguments.
     :param func: The function to wrap.
@@ -146,21 +156,28 @@ def wrap(n, func):
             if len(results) == 1:
                 return results[0]
 
+            # if list is [[data]] then return [data]
+            if isinstance(results, list):
+                if len(results) == 1 and isinstance(results[0], list):
+                    return results[0]
+
             return results
 
         except Exception as e:
             logger.error(f"Error evaluating function: {e}")
             raise e
-    return wrapper
+    
+    return (wrapper, n)
 
-def _wrap_1(func):
-    return wrap(1, func)
 
-def _wrap_2(func):
-    return wrap(2, func)
-
-def _wrap_3(func):
-    return wrap(3, func)
-
-def _wrap_4(func):
-    return wrap(4, func)
+def flatten(lst, obj):
+    if not isinstance(lst, list):
+        return lst
+    
+    def _helper(lst):
+        if not lst:
+            return []
+        if isinstance(lst[0], list):
+            return _helper(lst[0]) + _helper(lst[1:])
+        return lst[:1] + _helper(lst[1:])
+    return [_helper(lst)]
