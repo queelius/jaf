@@ -1,9 +1,13 @@
 import itertools
 import logging
+from typing import Any, List, NewType
+
+# Define custom types
+WildcardResults = NewType('WildcardResults', List[Any])
 
 logger = logging.getLogger(__name__)
 
-def _path_value(path, obj):
+def path_values(path: str, obj: Any) -> WildcardResults:
     """
     Retrieves values from a nested dictionary using dot notation with support for wildcards.
 
@@ -15,14 +19,14 @@ def _path_value(path, obj):
     :return: A list of all matched values.
     """
 
-
+    path = path.strip()
     if path == '$':
         # root node
-        return [obj]
+        return WildCardResults(obj)
 
     parts = path.split('.')
 
-    def _match_path(cur_obj, parts):
+    def _match_path(cur_obj: Any, parts: List[str]):
         if not parts:
             # No more parts to match, return the current object as a match
             return [cur_obj]
@@ -38,10 +42,10 @@ def _path_value(path, obj):
 
             # 2. If current is a dict, try going deeper on all keys
             if isinstance(cur_obj, dict):
-                for k, v in cur_obj.items():
+                for v in cur_obj.values():
                     # Keep '**' in the current pattern to allow multiple steps down
                     results.extend(_match_path(v, parts))
-            
+
             logger.debug(f"[match_path] ** results: {results}")
             return results
 
@@ -49,7 +53,7 @@ def _path_value(path, obj):
             # '*' matches exactly one level of any key
             results = []
             if isinstance(cur_obj, dict):
-                for k, v in cur_obj.items():
+                for v in cur_obj.values():
                     results.extend(_match_path(v, parts[1:]))
 
             logger.debug(f"[match_path] * results: {results}")
@@ -63,9 +67,9 @@ def _path_value(path, obj):
             logger.debug(f"[match_path] Normal key results: {results}")
             return results
 
-    return _match_path(obj, parts)
+    return WildCardResults(_match_path(obj, parts))
 
-def _exists(query, obj):
+def exists(query, obj):
     """
     Checks if the path exists in the object.
     For wildcard paths, checks if there's at least one match.
