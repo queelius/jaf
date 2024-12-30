@@ -3,7 +3,9 @@ import re
 import rapidfuzz
 import statistics
 import logging
-from .utils import exists, path_values, wrap, flatten
+from functools import reduce
+from .utils import wrap, flatten
+from .path import path_values, has_path
 
 # Set up the logger
 logger = logging.getLogger(__name__)
@@ -11,79 +13,102 @@ logger = logging.getLogger(__name__)
 class jafError(Exception):
     pass
 
-
-
 class jaf_eval:
     """
     JSON Abstract Filter (JAF) evaluator class. This only applies to a single
     object in the array.
     """
-    
+
+    #def _path_values(path, obj):
+    #    results = path_values(path, obj)
+    #    vals = [result.value for result in results]
+    #    paths = [result.path for result in results]
+    #    logger.debug(f"Path values for {path}: {vals}, {paths}")
+    #    return vals
+
     funcs = {
         # predicates
-        'eq?': wrap(3, lambda x1, x2, obj: x1 == x2),
-        'neq?': wrap(3, lambda x1, x2, obj: x1 != x2),
-        'gt?': wrap(3, lambda x1, x2, obj: x1 > x2),
-        'gte?': wrap(3, lambda x1, x2, obj: x1 >= x2),
-        'lt?': wrap(3, lambda x1, x2, obj: x1 < x2),
-        'lte?': wrap(3, lambda x1, x2, obj: x1 <= x2),
-        'in?': wrap(3, lambda x1, x2, obj: x1 in x2),
-        'exists?': wrap(2, lambda path, obj: exists(path, obj)),
-        'starts-with?': wrap(3, lambda start, value, obj: value.startswith(start)),
-        'ends-with?': wrap(3, lambda end, value, obj: value.endswith(end)),
+        'eq?': wrap(lambda x1, x2, obj: x1 == x2, "eq?"),
+        '==': wrap( lambda x1, x2, obj: x1 == x2, "=="),
+        'neq?': wrap(lambda x1, x2, obj: x1 != x2, "neq?"),
+        '!=': wrap(lambda x1, x2, obj: x1 != x2, "!="),
+        'gt?': wrap(lambda x1, x2, obj: x1 > x2, "gt?"),
+        '>': wrap(lambda x1, x2, obj: x1 > x2, ">"),
+        'gte?': wrap(lambda x1, x2, obj: x1 >= x2, "gte?"),
+        '>=': wrap(lambda x1, x2, obj: x1 >= x2, ">="),
+        'lt?': wrap(lambda x1, x2, obj: x1 < x2, "lt?"),
+        '<': wrap(lambda x1, x2, obj: x1 < x2, "<"),
+        'lte?': wrap(lambda x1, x2, obj: x1 <= x2, "lte?"),
+        '<=': wrap(lambda x1, x2, obj: x1 <= x2, "<="),
+        'in?': wrap(lambda x1, x2, obj: x1 in x2, "in?"),
+        'exists?': wrap(has_path, "exists?"),
+        'starts-with?': wrap(lambda start, value, obj: value.startswith(start), "starts-with?"),
+        'ends-with?': wrap(lambda end, value, obj: value.endswith(end), "ends-with?"),
 
         # string matching
-        'regex-match?': wrap(3, lambda pattern, value, obj: re.match(pattern, value) is not None),
-        'close-match?': wrap(3, lambda x1, x2, obj: rapidfuzz.fuzz.ratio(x1, x2) > 80),
-        'partial-match?': wrap(3, lambda x1, x2, obj: rapidfuzz.fuzz.partial_ratio(x1, x2) > 80),
+        'regex-match?': wrap(lambda pattern, value, obj: re.match(pattern, value) is not None, "regex-match?"),
+        'close-match?': wrap(lambda x1, x2, obj: rapidfuzz.fuzz.ratio(x1, x2) > 80, "close-match?"),
+        'partial-match?': wrap(lambda x1, x2, obj: rapidfuzz.fuzz.partial_ratio(x1, x2) > 80, "partial-match?"),
 
         # logical operators
-        'and': (lambda *args, obj: all(args), -1),
-        'or': (lambda *args, obj: any(args), -1),
-        'not': wrap(2, lambda x, obj: not x),
+         'and': lambda *args, obj: all(args),
+         '&': lambda *args, obj: all(args),
+         'or': lambda *args, obj: any(args),
+         '|': lambda *args, obj: any(args),
+        'not': wrap(lambda x, obj: not x, "not"),
+        '!': wrap(lambda x, obj: not x, "!"),
 
         # functions
-        'path': wrap(2, path_values),
-        'if': wrap(4, lambda cond, true_cond, false_cond, obj: true_cond if cond else false_cond),
-        'length': wrap(2, lambda x, obj: len(x)),
-        'type': wrap(2, lambda x, obj: type(x).__name__),
-        'keys': wrap(2, lambda x, obj: list(x.keys())),
-        'sort': wrap(2, lambda x, obj: sorted(x)),
-        'reverse': wrap(2, lambda x, obj: [x[::-1]]),
-        'flatten': wrap(flatten, 2),
-        'unique': wrap(2, lambda x, obj: list(set(x))),
-        'slice': wrap(4, lambda x, start, end, obj: x[start:end]),
-        'index': wrap(3, lambda x, i, obj: x[i]),
-        'list': wrap(-1, lambda *args, obj: list(args)),
+        'path': wrap(path_values, "path"),
+        'if': wrap(lambda cond, true_cond, false_cond, obj: true_cond if cond else false_cond, "if"),
+        'len': wrap(lambda x, obj: len(x), "len"),
+        'type': wrap(lambda x, obj: type(x).__name__, "type"),
+        'keys': wrap(lambda x, obj: list(x.keys()), "keys"),
+        'sort': wrap(lambda x, obj: sorted(x), "sort"),
+        'reverse': wrap(lambda x, obj: list(reversed(x)), "reverse"),
+        'flatten': wrap(flatten, "flatten"),
+        'unique': wrap(lambda x, obj: list(set(x)), "unique"),
+        'slice': wrap(lambda x, start, end, obj: x[start:end], "slice"),
+        'index': wrap(lambda x, i, obj: x[i], "index"),
+        'list': wrap(lambda *args, obj: list(args), "list"),
 
         # datetime functions
-        'now': wrap(1, lambda obj: datetime.datetime.now()),
-        'date': wrap(2, lambda x, obj: datetime.datetime.strptime(x, '%Y-%m-%d')),
-        'datetime': wrap(3, lambda x, obj: datetime.datetime.strptime(x, '%Y-%m-%d %H:%M:%S')),
-        'date-diff': wrap(3, lambda date1, date2, obj: date1 - date2),
-        'days': wrap(2, lambda datediff, obj: datediff.days),
-        'seconds': wrap(2, lambda datediff, obj: datediff.seconds),
+        'now': wrap(lambda obj: datetime.datetime.now(), "now"),
+        'date': wrap(lambda x, obj: datetime.datetime.strptime(x, '%Y-%m-%d'), "date"),
+        'datetime': wrap(lambda x, obj: datetime.datetime.strptime(x, '%Y-%m-%d %H:%M:%S'), "datetime"),
+        'date-diff': wrap(lambda date1, date2, obj: date1 - date2, "date-diff"),
+        'days': wrap(lambda datediff, obj: datediff.days, "days"),
+        'seconds': wrap(lambda datediff, obj: datediff.seconds, "seconds"),
 
         # string functions
-        'lower-case': wrap(2, lambda s, obj: s.lower()),
-        'upper-case': wrap(2, lambda s, obj: s.upper()),
-        'concat': wrap(2, lambda lst, obj: [''.join([str(x) for x in lst])] if isinstance(lst, list) else lst),
+        'lower-case': wrap(lambda s, obj: s.lower(), "lower-case"),
+        'upper-case': wrap(lambda s, obj: s.upper(), "upper-case"),
+        'concat': wrap(lambda lst, obj: ''.join([str(x) for x in lst]), "concat"),
 
-        # higher-order functions       
-        'map': wrap(2, lambda lst, func, obj: [func(item, obj) for item in lst]),
-        'filter': wrap(2, lambda lst, func, obj: [item for item in lst if func(item, obj)]),
-        'nth': wrap(2, lambda lst, n, obj: lst[n]),
-
+        # higher-order functions 
+        'map': wrap(lambda lst, func, obj: [func(item, obj) for item in lst], "map"),
+        'filter': wrap(lambda lst, func, obj: [item for item in lst if func(item, obj)], "filter"),
+        'nth': wrap(lambda lst, n, obj: lst[n], "nth"),
 
         # math functions
-        'sum': wrap(2, lambda lst, obj: sum(lst)),
-        'max': wrap(2, lambda lst, obj: max(lst)),
-        'min': wrap(2, lambda lst, obj: min(lst)),
-        'abs': wrap(2, lambda x, obj: abs(x)),
-        'round': wrap(2, lambda x, ndigits, obj: round(x, ndigits)),
-        'stddev': wrap(2, lambda lst, obj: statistics.stdev(lst)),
-        'mean': wrap(2, lambda lst, obj: statistics.mean(lst)),
-        'median': wrap(2, lambda lst, obj: statistics.median(lst))
+        'sum': wrap(lambda lst, obj: sum(lst), "sum"),
+        'product': wrap(lambda lst, obj: reduce(lambda x, y: x * y, lst), "product"),
+        '*': wrap(lambda x, y, obj: x * y, "*"),        
+        '/': wrap(lambda x, y, obj: x / y, "/"),
+        '-': wrap(lambda x, y, obj: x - y, "-"),
+        '+': wrap(lambda x, y, obj: x + y, "+"),
+        'max': wrap(lambda lst, obj: max(lst), "max"),
+        'min': wrap(lambda lst, obj: min(lst), "min"),
+        'abs': wrap(lambda x, obj: abs(x), "abs"),
+        'round': wrap(lambda x, obj: round(x), "round"),
+        'round_n': wrap(lambda x, ndigits, obj: round(x, ndigits), "round_n"),
+        'sd': wrap(lambda lst, obj: statistics.stdev(lst), "sd"),
+        'mean': wrap(lambda lst, obj: statistics.mean(lst), "mean"),
+        'median': wrap(lambda lst, obj: statistics.median(lst), "median"),
+        'mode': wrap(lambda lst, obj: statistics.mode(lst), "mode"),
+        'variance': wrap(lambda lst, obj: statistics.variance(lst), "variance"),
+        'quantile': wrap(lambda lst, p, obj: statistics.quantile(lst, p), "quantile"),
+        'percentile': wrap(lambda lst, p, obj: statistics.percentile(lst, p), "percentile"),
     }
 
     @staticmethod
@@ -123,15 +148,9 @@ class jaf_eval:
 
         logger.debug(f"Evaluating operator: '{op}'")
 
-        func, nargs = jaf_eval.funcs[op]
-        logger.debug(f"Function signature: {func.__code__.co_varnames}, nargs: {nargs}")
-
+        func = jaf_eval.funcs[op]
         args = query[1:]
         logger.debug(f"Unevaluated args: {args}")
-
-        if nargs != -1 and len(args) != nargs-1:
-            logger.error(f"'{op}' expects {nargs} args, got {len(args)}.")
-            raise ValueError(f"'{op}' expects {nargs} args, got {len(args)}.")
 
         eval_args = []
         logger.debug(f"Evaluating args {args}.")
@@ -145,11 +164,14 @@ class jaf_eval:
                 logger.debug(f"Arg {arg} is self-evaluating.")
                 eval_args.append(arg)
 
+        logger.debug(f"Evaluated args: {eval_args}")
+
         try:
-            result = func(*eval_args, obj=obj)
-            logger.debug(f"Result-of '{op}': {result}")
+            logger.debug(f"Applying {op} to {eval_args} with obj {obj}")
+            result = func(eval_args, obj=obj)
+            logger.debug(f"Result '{op}': {result}")
         except Exception as e:
-            logger.error(f"Error evaluating '{op}' with args {args}: {e}")
-            raise e
+            logger.error(f"Error evaluating '{op}' with args {args}: {e}. Skipping...")
 
         return result
+    

@@ -1,9 +1,11 @@
 from typing import List, Dict, Any, Union
 import logging
 from .jaf_eval import jaf_eval
+from .path import PathValue, path_values, path_values_ast, has_path, has_path_value, has_path_value_type, has_path_components
 from .dsl.parse import parse_dsl
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.DEBUG)
 
 class jafError(Exception):
     pass
@@ -49,7 +51,7 @@ def jaf(data: List[Dict], query: Union[List, str]) -> List[Dict]:
                     else:
                         logger.debug("Object did not satisfy the query.")
                 else:
-                    logger.debug(f"Retuned a non-boolean value: {result}. Skipping object.")
+                    logger.debug(f"Retuned a non-boolean value: {result}. Storing in value-results.")
                     value_results[i] = result
             else:
                 logger.error("Skipping non-dictionary object: {obj}.")

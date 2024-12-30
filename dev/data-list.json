@@ -11,6 +11,11 @@
             "active": 1,
             "jumps": [ 1, 3, 5, 1 ]
         },
+        "owner2": {
+            "name": "alice2",
+            "active": 1,
+            "jumps": [ 2, 4, 3, 2 ]
+        },
         "commits": [
             {
                 "date": "2021-01-01",
@@ -19,6 +24,29 @@
             {
                 "date": "2021-01-02",
                 "count": 5
+            }
+        ]        
+    },
+    {
+        "id": 1,
+        "name": "WebDevRepo",
+        "language": "JavaScript",
+        "stars": 100,
+        "forks": 20,
+        "description": "A repository for web development projects.",
+        "owner": {
+            "name": "bob",
+            "active": 0,
+            "jumps": [ 2, 4, 6, 1 ]
+        },
+        "commits": [
+            {
+                "date": "2021-01-01",
+                "count": 20
+            },
+            {
+                "date": "2021-01-02",
+                "count": 10
             }
         ]        
     }
