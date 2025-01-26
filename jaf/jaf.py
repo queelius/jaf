@@ -1,7 +1,7 @@
 from typing import List, Dict, Any, Union
 import logging
 from .jaf_eval import jaf_eval
-from .path import PathValue, path_values, path_values_ast, has_path, has_path_value, has_path_value_type, has_path_components
+from .path import path_values, path_values_ast, Value, PathValue, OpValue
 from .dsl.parse import parse_dsl
 
 logger = logging.getLogger(__name__)
@@ -44,15 +44,16 @@ def jaf(data: List[Dict], query: Union[List, str]) -> List[Dict]:
             if isinstance(obj, dict):
                 logger.debug(f"Evaluating {query=} against {obj=}.")
                 result = jaf_eval.eval(query, obj)
-                if type(result) == bool:
-                    if result:
+                # check if the result is a boolean
+                if isinstance(result.value, bool):
+                    if result.value:
                         logger.debug("Object satisfied the query.")
                         results.append(i)
                     else:
                         logger.debug("Object did not satisfy the query.")
                 else:
                     logger.debug(f"Retuned a non-boolean value: {result}. Storing in value-results.")
-                    value_results[i] = result
+                    value_results[i] = result.value
             else:
                 logger.error("Skipping non-dictionary object: {obj}.")
     except jafError as e:
