@@ -22,7 +22,7 @@ def path_values(path: str, obj: Any) -> WildcardResults:
     path = path.strip()
     if path == '$':
         # root node
-        return WildCardResults(obj)
+        return WildcardResults(obj)
 
     parts = path.split('.')
 
