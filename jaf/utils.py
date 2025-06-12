@@ -91,16 +91,15 @@ def path_values(path_components: list, obj: Any):
 
     matched_values = _match_path(obj, path_components)
 
-    if not matched_values:
-        return [] 
-
     if has_wildcards:
-        # For wildcard paths, the result is a list of all values found.
-        # Wrap this list in WildcardResultsList.
+        # For wildcard paths, always return a WildcardResultsList,
+        # even if it's empty.
         return WildcardResultsList(matched_values)
     else:
-        # For non-wildcard paths, _match_path returns a list containing a single element: the actual value.
-        # This value itself could be a list.
+        # For non-wildcard paths:
+        if not matched_values:
+            return [] # Return a plain empty list if no match
+        # Otherwise, _match_path returns a list containing a single element: the actual value.
         return matched_values[0]
 
 def exists(path, obj):
