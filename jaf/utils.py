@@ -136,12 +136,14 @@ def wrap(n, func):
 
             # If there's only one result, return it directly
             if len(results) == 1:
-                return results[0]
-
-            # if list is [[data]] then return [data]
-            if isinstance(results, list):
-                if len(results) == 1 and isinstance(results[0], list):
-                    return results[0]
+                result = results[0]
+                
+                # Special case: if the single result is a list containing exactly one list,
+                # flatten it one level (this handles cases where wildcard paths return [[data]])
+                if isinstance(result, list) and len(result) == 1 and isinstance(result[0], list):
+                    return result[0]
+                
+                return result
 
             return results
 
@@ -156,15 +158,3 @@ def wrap(n, func):
     
     return (wrapper, n)
 
-
-def flatten(lst, obj):
-    if not isinstance(lst, list):
-        return lst
-    
-    def _helper(lst):
-        if not lst:
-            return []
-        if isinstance(lst[0], list):
-            return _helper(lst[0]) + _helper(lst[1:])
-        return lst[:1] + _helper(lst[1:])
-    return [_helper(lst)]

@@ -3,7 +3,7 @@ import re
 import rapidfuzz
 import statistics
 import logging
-from .utils import exists, path_values, wrap, flatten
+from .utils import exists, path_values, wrap
 
 # Set up the logger
 logger = logging.getLogger(__name__)
