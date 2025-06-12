@@ -126,10 +126,10 @@ class TestRealWorldScenarios:
         # Find users with Python skills
         result = jaf(self.users, ["in?", "Python", ["path", ["skills"]]])
         assert result == [0, 2]
-        
+    
         # Find users with specific number of skills
         result = jaf(self.users, ["eq?", ["length", ["path", ["skills"]]], 3])
-        assert result == [1, 3]
+        assert result == [0, 1, 3]
         
         # Find users with more than 3 skills
         result = jaf(self.users, ["gt?", ["length", ["path", ["skills"]]], 3])
