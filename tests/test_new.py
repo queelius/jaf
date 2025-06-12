@@ -1,8 +1,8 @@
 import pytest
-from jaf.utils import wrap
+from jaf.utils import adapt_jaf_operator
 
-class TestWrap:
-    """Test the wrap function utility"""
+class TestAdaptJafOperator:  # Renamed class to reflect the function being tested
+    """Test the adapt_jaf_operator function utility"""
     
     def test_basic_function_wrapping(self):
         """Test basic function wrapping with correct arguments"""
@@ -10,7 +10,7 @@ class TestWrap:
         def add(x, y, obj):
             return x + y
         
-        wrapped_add, n = wrap(3, add)
+        wrapped_add, n = adapt_jaf_operator(3, add)
         result = wrapped_add(5, 3, obj={})
         assert result == 8
     
@@ -20,7 +20,7 @@ class TestWrap:
         def is_positive(x, obj):
             return x > 0
         
-        wrapped_func, n = wrap(2, is_positive)
+        wrapped_func, n = adapt_jaf_operator(2, is_positive)
         
         # True case
         result = wrapped_func(5, obj={})
@@ -35,7 +35,7 @@ class TestWrap:
         def get_length(x, obj):
             return len(x)
         
-        wrapped_func, n = wrap(2, get_length)
+        wrapped_func, n = adapt_jaf_operator(2, get_length)
         result = wrapped_func([1, 2, 3], obj={})
         assert result == 3
         assert isinstance(result, int)
@@ -45,7 +45,7 @@ class TestWrap:
         def return_nested_list(obj):
             return [[1, 2, 3]]
         
-        wrapped_func, n = wrap(1, return_nested_list)
+        wrapped_func, n = adapt_jaf_operator(1, return_nested_list)
         result = wrapped_func(obj={})
         assert result == [1, 2, 3]
     
@@ -54,7 +54,7 @@ class TestWrap:
         def divide(x, y, obj):
             return x / y
         
-        wrapped_func, n = wrap(3, divide)
+        wrapped_func, n = adapt_jaf_operator(3, divide)
         
         # This should catch TypeError and return False
         result = wrapped_func("string", 5, obj={})
@@ -65,7 +65,7 @@ class TestWrap:
         def call_method(x, obj):
             return x.nonexistent_method()
         
-        wrapped_func, n = wrap(2, call_method)
+        wrapped_func, n = adapt_jaf_operator(2, call_method)
         
         # This should catch AttributeError and return False
         result = wrapped_func("string", obj={})
@@ -76,7 +76,7 @@ class TestWrap:
         def simple_func(x, obj):
             return x
         
-        wrapped_func, n = wrap(2, simple_func)
+        wrapped_func, n = adapt_jaf_operator(2, simple_func)
         
         # Wrong number of arguments should raise ValueError
         with pytest.raises(ValueError, match="Unexpected number of arguments"):
@@ -87,7 +87,7 @@ class TestWrap:
         def return_empty_list(obj):
             return []
         
-        wrapped_func, n = wrap(1, return_empty_list)
+        wrapped_func, n = adapt_jaf_operator(1, return_empty_list)
         result = wrapped_func(obj={})
         assert result == []
     
@@ -96,7 +96,7 @@ class TestWrap:
         def return_none(obj):
             return None
         
-        wrapped_func, n = wrap(1, return_none)
+        wrapped_func, n = adapt_jaf_operator(1, return_none)
         result = wrapped_func(obj={})
         assert result is None
     
@@ -109,7 +109,7 @@ class TestWrap:
                 return any(item == y for item in x)
             return x == y
         
-        wrapped_func, n = wrap(3, check_equality)
+        wrapped_func, n = adapt_jaf_operator(3, check_equality)
         
         # Test with matching case
         result = wrapped_func(["a", "b", "c"], "b", obj={})
@@ -127,7 +127,7 @@ class TestWrap:
             else:
                 return True
         
-        wrapped_func, n = wrap(2, mixed_return)
+        wrapped_func, n = adapt_jaf_operator(2, mixed_return)
         
         # Single non-boolean result
         result = wrapped_func(10, obj={})
@@ -142,7 +142,7 @@ class TestWrap:
         def eq_predicate(x1, x2, obj):
             return x1 == x2 and type(x1) == type(x2)
         
-        wrapped_func, n = wrap(3, eq_predicate)
+        wrapped_func, n = adapt_jaf_operator(3, eq_predicate)
         
         # Matching values and types
         result = wrapped_func("hello", "hello", obj={})
@@ -161,7 +161,7 @@ class TestWrap:
         def raise_value_error(obj):
             raise ValueError("Custom error")
         
-        wrapped_func, n = wrap(1, raise_value_error)
+        wrapped_func, n = adapt_jaf_operator(1, raise_value_error)
         
         # ValueError should be propagated, not caught
         with pytest.raises(ValueError, match="Custom error"):
@@ -172,7 +172,7 @@ class TestWrap:
         def access_obj(key, obj):
             return obj.get(key, "not found")
         
-        wrapped_func, n = wrap(2, access_obj)
+        wrapped_func, n = adapt_jaf_operator(2, access_obj)
         test_obj = {"name": "Alice", "age": 30}
         
         result = wrapped_func("name", obj=test_obj)

@@ -1,8 +1,8 @@
-# JAF (JSON Array Filter) - Specification v1.0
+# JAF (JSON Array Filter) - Specification v1.1
 
 ## Overview
 
-JAF is a simple, focused domain-specific language for filtering JSON arrays. It's designed to be **not Turing-complete** and focuses solely on filtering with predictable boolean results.
+JAF is a simple, focused domain-specific language for filtering JSON arrays. It\'s designed to be **not Turing-complete** and focuses solely on filtering with predictable boolean results.
 
 ## Core Philosophy
 
@@ -21,47 +21,112 @@ JAF is a simple, focused domain-specific language for filtering JSON arrays. It'
 Queries use S-expression syntax: `[operator, arg1, arg2, ...]`
 
 **Examples**:
+
 ```python
-["eq?", ["path", ["name"]], "John"]
-["and", ["exists?", ["path", ["email"]]], ["gt?", ["length", ["path", ["items"]]], 5]]
+["eq?", ["path", [["key", "name"]]], "John"]
+["and", 
+  ["exists?", ["path", [["key", "email"]]]], 
+  ["gt?", ["length", ["path", [["key", "items"]]]], 5]
+]
 ```
 
 ## Path System
 
-Paths are **lists of components** (not strings) used within the `["path", path_components_list]` special form.
+The JAF Path System is a small, dedicated sub-language for data traversal within JSON objects. Paths are **lists of tagged components** used within the `["path", path_components_list]` special form. This tagged structure (its own AST) provides a uniform and explicit way to define how to traverse the JSON data.
+
+Each component in the `path_components_list` is a list itself, where the first element is a tag (string) indicating the type of path segment, and subsequent elements are arguments for that segment type.
+
+**Supported Path Component Tags:**
+
+1.  `["key", <string_key_name>]`
+    *   Accesses an object\'s property by its string key.
+    *   Example: `[["key", "user"]]` accesses `obj["user"]`.
+
+2.  `["index", <integer_index_value>]`
+    *   Accesses an array element by its integer index (supports negative indexing).
+    *   Example: `[["key", "items"], ["index", 0]]` accesses `obj["items"][0]`.
+
+3.  `["indices", [<int_idx1>, <int_idx2>, ...]]`
+    *   Accesses multiple array elements by a list of specific integer indices.
+    *   Returns a list of values found at these indices.
+    *   Example: `[["key", "tags"], ["indices", [0, 2, 4]]]` accesses `obj["tags"][0]`, `obj["tags"][2]`, and `obj["tags"][4]`.
+
+4.  `["slice", <start_n_or_null>, <stop_n_or_null>, <step_n_or_null>]`
+    *   Accesses a slice of an array. `start_n`, `stop_n`, and `step_n` behave like Python\'s slice arguments (all are optional integers; `null` can be used for defaults, e.g., `null` for `start` means from the beginning, `null` for `stop` means till the end, `null` for `step` means `1`).
+    *   Example: `[["key", "data"], ["slice", 0, 10, 2]]` accesses elements from index 0 up to (but not including) 10, with a step of 2.
+    *   `[["key", "data"], ["slice", null, 5, null]]` accesses elements from the beginning up to index 5 with a step of 1.
+
+5.  `["regex_key", <pattern_string>]`
+    *   Accesses object properties where keys match the given regular expression pattern.
+    *   Returns a list of values from matching keys.
+    *   Example: `[["regex_key", "^error_\\d+$"]]` accesses values for keys like "error_1", "error_2", etc. (Note: `\` in regex might need escaping depending on the string representation in the query).
+
+6.  `["wc_level"]` (Wildcard - Current Level)
+    *   Matches any single field name or array index at the current level of the object or array.
+    *   **Motivation**: Useful for iterating over elements of a list or values of a dictionary when the keys/indices are not known beforehand, or when an operation needs to be applied to all direct children.
+    *   Example: `[["key", "tasks"], ["wc_level"], ["key", "status"]]` accesses the "status" of each task in the "tasks" list.
+
+7.  `["wc_recursive"]` (Wildcard - Recursive Descent)
+    *   Matches any field name recursively at any depth within the current object structure. It also considers the current level for matches if the subsequent path parts align.
+    *   **Motivation**: Essential for deep searches where the target data might be nested at varying or unknown depths.
+    *   Example: `[["wc_recursive"], ["key", "error_code"]]` finds any "error_code" field anywhere in the object.
+
+**Path Evaluation (`eval_path` function):**
+
+The `eval_path(obj, path_components_list)` function (internally used by the `["path", ...]` special form) evaluates the given path against the `obj` (which is typically a single JSON object from the input array).
+
+- **Return Value**:
+    - If the path successfully resolves to a single, definite value (e.g., `[["key", "name"]]` on an object with a "name" key), that value is returned directly. This includes `None` if the field exists and its value is `null`.
+    - If the path involves components that can yield multiple values (e.g., `["indices", ...]`, `["slice", ...]`, `["regex_key", ...]`, `["wc_level"]`, `["wc_recursive"]`), or if a segment of the path results in multiple matches due to these components, `eval_path` returns a `PathValues` object. A `PathValues` object is a specialized list containing all the values found.
+    - If a path segment does not match (e.g., a key not found, an index out of bounds for a specific index access):
+        - If the overall path was intended to yield a single value (no multi-match components like `wc_level`, `slice`, etc.) and fails at any point, `eval_path` returns an empty list `[]` to signify "not found" or "no value".
+        - If the path could yield multiple values (due to multi-match components) and no values are found for those components, it contributes to an empty `PathValues` (which behaves like an empty list).
+    - If the `path_components_list` is empty (e.g., `["path", []]`), `eval_path` returns the original `obj`.
+
+**Examples of Path Syntax:**
 
 ```python
-["path", ["name"]]                    # obj["name"]  
-["path", ["user", "email"]]           # obj["user"]["email"]
-["path", ["items", "*", "name"]]      # obj["items"][*]["name"] (wildcard)
-["path", ["data", 0, "value"]]        # obj["data"][0]["value"] (array index)
+# Access a top-level key:
+["path", [["key", "name"]]]
+
+# Access a nested key:
+["path", [["key", "user"], ["key", "email"]]]
+
+# Access all "status" fields from items in a list:
+["path", [["key", "items"], ["wc_level"], ["key", "status"]]]
+
+# Access an element by index:
+["path", [["key", "data"], ["index", 0], ["key", "value"]]]
+
+# Access elements via slice:
+["path", [["key", "measurements"], ["slice", 10, 20, null]]]
+
+# Access elements via specific indices:
+["path", [["key", "users"], ["indices", [1, 3, 5]]]]
+
+# Access elements via regex on keys:
+["path", [["key", "logs"], ["regex_key", "session_\\w+"]]]
 ```
 
-### Wildcards
-- `"*"` (Star): Matches any single field name or array index at the current level of the object or array.
-    - **Motivation**: Useful for iterating over elements of a list or values of a dictionary when the keys/indices are not known beforehand, or when an operation needs to be applied to all direct children. Examples: checking the status of all tasks in a `tasks` list (`["tasks", "*", "status"]`), extracting all phone numbers from a `contacts` object where each key is a contact name (`["contacts", "*", "phoneNumber"]`).
-- `"**"` (Double Star / Recursive Descent): Matches any field name recursively at any depth within the current object structure. It also considers the current level for matches if the subsequent path parts align.
-    - **Motivation**: Essential for deep searches where the target data might be nested at varying or unknown depths. Examples: finding any occurrence of an `"error_code"` field anywhere in a complex log object (`["**", "error_code"]`), locating all `"commentText"` fields regardless of their nesting level within a document structure (`["**", "commentText"]`).
-
 **Behavior of the `["path", ...]` special form:**
-- When the `["path", ...]` form is evaluated, it produces a `WildcardResultsList`.
-- A `WildcardResultsList` is a list of values that result from following the path components in the context of each item in the input array.
-- If a path component is a wildcard (`*` or `**`), it alters how the `WildcardResultsList` is constructed:
-    - `*` matches any single field or array index at the current level.
-    - `**` matches any field or array index at any depth, including the current level if applicable.
-- The resulting `WildcardResultsList` can then be used as input to predicates or value-transforming functions.
+
+- When the `["path", ...]` form is evaluated, it internally calls `eval_path` with the current object and the provided `path_components_list`.
+- The result of `eval_path` (a single value, `None`, `[]`, or a `PathValues` list) is then used as the value of the `["path", ...]` expression in the broader JAF query.
 
 ## Operator Categories
 
 ### 1. Special Forms (Custom Evaluation)
-- `path` - Extract values: `["path", ["field", "subfield"]]`
-- `exists?` - Check existence: `["exists?", ["path", ["field"]]]`
+
+- `path` - Extract values: `["path", [["key", "field"], ["key", "subfield"]]]`
+- `exists?` - Check existence: `["exists?", ["path", [["key", "field"]]]]`
+  - `exists?` returns `true` if `eval_path` for the given path components returns anything other than an empty list `[]`. A path to a `null` value *does* exist and `exists?` will return `true`.
 - `if` - Conditional: `["if", condition, true-expr, false-expr]`
 - `and` - Logical AND with short-circuit: `["and", expr1, expr2, ...]`
-- `or` - Logical OR with short-circuit: `["or", expr1, expr2, ...]`  
+- `or` - Logical OR with short-circuit: `["or", expr1, expr2, ...]`
 - `not` - Logical negation: `["not", expr]`
 
 ### 2. Predicates (Return Boolean)
+
 ```python
 # Comparison
 "eq?", "neq?", "gt?", "gte?", "lt?", "lte?"
@@ -74,6 +139,7 @@ Paths are **lists of components** (not strings) used within the `["path", path_c
 ```
 
 ### 3. Value Extractors (Support Predicates)
+
 ```python
 # Data access
 "length", "type", "keys"
@@ -88,111 +154,138 @@ Paths are **lists of components** (not strings) used within the `["path", path_c
 ## Function Signatures
 
 All functions follow this pattern:
+
 ```python
 [function-name, arg1, arg2, ...]
 ```
 
 **Examples**:
+
 ```python
-["eq?", ["path", ["name"]], "John"]                    # name == "John"
-["gt?", ["length", ["path", ["items"]]], 5]            # len(items) > 5  
-["starts-with?", ["lower-case", ["path", ["email"]]], "admin"]  # email.lower().startswith("admin")
+["eq?", ["path", [["key", "name"]]], "John"]                    # name == "John"
+["gt?", ["length", ["path", [["key", "items"]]]], 5]            # len(items) > 5  
+["starts-with?", ["lower-case", ["path", [["key", "email"]]]], "admin"]  # email.lower().startswith("admin")
 ```
 
 ## Evaluation Rules
 
 ### 1. Literals
-- Strings, numbers, booleans, null are returned as-is
+
+- Strings, numbers, booleans, null are returned as-is.
 - `"hello"` → `"hello"`
 - `42` → `42`
+- `null` → `None` (in Python representation)
 
 ### 2. Special Forms
-- Evaluated with custom logic (don't evaluate all args first)
-- Handle control flow and path access
+
+- Evaluated with custom logic (don\'t evaluate all args first).
+- Handle control flow and path access.
 
 ### 3. Regular Functions (Predicates and Value Extractors)
-- All arguments evaluated first, then function called
-- Predictable evaluation order
 
-### 4. Wildcards in Predicates and Functions (Theory of Wildcard Path Evaluation)
+- All arguments evaluated first, then function called.
+- Predictable evaluation order.
 
-When a `WildcardResultsList` (the result of a `["path", ...]` expression involving `*` or `**`) is used as an argument to a predicate or a value-transforming function, JAF employs a specific evaluation strategy based on existential quantification for predicates.
+### 4. `PathValues` in Predicates and Functions (Interaction with `adapt_jaf_operator`)
+
+When a `PathValues` object (the result of a `["path", ...]` expression involving components like `wc_level`, `wc_recursive`, `indices`, `slice`, or `regex_key`) is used as an argument to a predicate or a value-transforming function, JAF (via the `adapt_jaf_operator` utility) employs a specific evaluation strategy.
 
 **a. Argument Expansion (Cartesian Product):**
-- If one or more arguments to a function are `WildcardResultsList`s, the system generates all possible combinations of individual values from these lists. This is equivalent to a Cartesian product (e.g., via `itertools.product`).
-- Arguments that are not `WildcardResultsList`s are treated as single-element lists for the purpose of this product generation.
+
+- If one or more arguments to a function are `PathValues` lists, the system generates all possible combinations of individual values from these lists. This is equivalent to a Cartesian product.
+- Arguments that are not `PathValues` lists (i.e., single values) are treated as single-element lists for this product generation.
 - The underlying function (predicate or transformer) is then invoked for each unique combination of arguments derived from this expansion.
 
 **b. Predicate Evaluation (Existential Quantification - ∃):**
+
 - If the function being called is a **predicate** (typically its name ends with `?`):
-    - The predicate evaluates to `true` if **there exists at least one combination** of expanded arguments for which the predicate's condition holds.
-    - If all combinations evaluate to `false`, or if any `WildcardResultsList` argument was initially empty (resulting in no combinations to test), the overall predicate evaluates to `false`.
-    - **Example**: `["eq?", ["path", ["items", "*", "status"]], "completed"]`.
-        Let `S = path_values(["items", "*", "status"], obj)`. The predicate is true if ∃ *s* ∈ `S` such that `eq?(s, "completed")` is true.
-    - Type errors or attribute errors encountered during the evaluation of a specific combination for a predicate cause that particular combination to yield `false`. The overall predicate can still be `true` if another combination succeeds.
+  - The predicate evaluates to `true` if **there exists at least one combination** of expanded arguments for which the predicate\'s condition holds.
+  - If all combinations evaluate to `false`, or if any `PathValues` argument was initially empty (resulting in no combinations to test), the overall predicate evaluates to `false`.
+  - **Example**: `["eq?", ["path", [["key", "items"], ["wc_level"], ["key", "status"]]], "completed"]`.
+    Let `S = eval_path(obj, [["key", "items"], ["wc_level"], ["key", "status"]]])`. The predicate is true if ∃ *s* ∈ `S` such that `eq?(s, "completed")` is true.
+  - Type errors or attribute errors encountered during the evaluation of a specific combination for a predicate cause that particular combination to yield `false`. The overall predicate can still be `true` if another combination succeeds.
 
 **c. Value Extractor/Transformer Evaluation:**
+
 - If the function is a **value extractor or transformer**:
-    - The function is called for each combination of arguments generated as per (4a).
-    - A list containing the results from all these individual function calls is collected.
-    - **Result Aggregation**:
-        - If this list of results contains exactly one item, that single item is returned.
-        - If this list contains one item which is itself a list (e.g., `[[1,2,3]]` where the inner list was the actual return value of the function for the single combination), this inner list is "unwrapped" and returned (e.g., `[1,2,3]`). This flattening is primarily relevant when the original function was expected to return a list, and no significant wildcard expansion occurred that would naturally produce multiple distinct results.
-        - Otherwise (multiple results from multiple combinations, or an empty list if no combinations were processed due to an empty `WildcardResultsList`), the collected list of results is returned as is.
-        - If any `WildcardResultsList` argument was empty, leading to no combinations, an empty list `[]` is typically returned by the wrapper for the value extractor.
+  - The function is called for each combination of arguments generated as per (4a).
+  - A list containing the results from all these individual function calls is collected.
+  - **Result Aggregation**:
+    - If this list of results contains exactly one item, that single item is returned.
+    - If this list contains one item which is itself a list (e.g., `[[1,2,3]]` where the inner list was the actual return value of the function for the single combination), this inner list is "unwrapped" and returned (e.g., `[1,2,3]`). This rule does not apply if the single item is already a `PathValues` instance or if the outer list is a `PathValues` instance.
+    - Otherwise (multiple results from multiple combinations, or an empty list if no combinations were processed due to an empty `PathValues`), the collected list of results is returned (often as a `PathValues` object if multiple results arose from expansion).
+    - If any `PathValues` argument was empty, leading to no combinations, an empty list `[]` is typically returned by the wrapper for the value extractor.
 
 **d. Universal Quantification (`∀`) and `path`:**
+
 - The `path` operator itself is designed for *data extraction* – it gathers all values that match a given path. It does not inherently perform universal quantification ("for all").
-- Universal quantification is a *checking* operation. While not directly supported by `path`, such checks can often be constructed using negation and existential quantification (e.g., "it is NOT true that there EXISTS an item that does NOT satisfy the condition").
-- A dedicated higher-order operator like `["all?", collection_expr, predicate_expr]` could provide direct universal quantification, but this is beyond the current scope of JAF's core `path` and predicate interaction, which focuses on the more common filtering need of existential matches.
+- Universal quantification is a *checking* operation. While not directly supported by `path`, such checks can often be constructed using negation and existential quantification (e.g., "it is NOT true that there EXISTS an item that does NOT satisfy the condition"). For example, to check if all items in a list have `status == "active"`: `["not", ["in?", false, ["map", ["lambda", "x", ["eq?", ["path", [["key", "x"], ["key", "status"]]], "active"]], ["path", [["key", "items"]]]]]]` (assuming a hypothetical `map` and `lambda` for illustration; JAF does not have these directly but similar logic can be built with `and`/`or` over known items or by checking for the non-existence of a counter-example). A simpler approach for "all items satisfy X" is often "NOT (EXISTS item that does NOT satisfy X)".
 
 ## Error Handling
 
 ### Path Errors
-- Non-existent paths return `null`
-- Use `exists?` to check path existence
+
+- Non-existent paths (key not found, index out of bounds for specific index access) result in `eval_path` returning `[]` (empty list).
+- A path to a field that exists but has a `null` value will result in `eval_path` returning `None`.
+- Use `exists?` to check path existence. `exists?` returns `true` if `eval_path` returns anything other than `[]`.
 
 ### Type Errors
-- Type mismatches return `false` (don't raise errors)
-- Invalid arguments raise `ValueError`
+
+- Type mismatches within predicate/function evaluations (after `PathValues` expansion) generally cause that specific evaluation instance to return `false` (for predicates) or contribute an error marker/skip (for transformers), rather than halting the entire query. The `adapt_jaf_operator` handles this gracefully.
+- Invalid query structure or unknown operators raise `jafError` or `ValueError`.
 
 ## Example Queries
 
 ### Basic Filtering
+
 ```python
 # Find objects where name is "John"
-["eq?", ["path", ["name"]], "John"]
+["eq?", ["path", [["key", "name"]]], "John"]
 
 # Find objects with more than 5 items
-["gt?", ["length", ["path", ["items"]]], 5]
+["gt?", ["length", ["path", [["key", "items"]]]], 5]
 ```
 
 ### Complex Conditions
+
 ```python
 # Active users with email addresses
 ["and", 
-  ["eq?", ["path", ["active"]], true],
-  ["exists?", ["path", ["email"]]]]
+  ["eq?", ["path", [["key", "active"]]], true],
+  ["exists?", ["path", [["key", "email"]]]]
+]
 
 # Case-insensitive language check
-["eq?", ["lower-case", ["path", ["language"]]], "python"]
+["eq?", ["lower-case", ["path", [["key", "language"]]]], "python"]
 ```
 
-### Wildcard Usage
-```python
-# Any item has status "completed"  
-["eq?", ["path", ["items", "*", "status"]], "completed"]
+### Path System Examples
 
-# Deep search for any "error" field
-["exists?", ["path", ["**", "error"]]]
+```python
+# Any item in "items" list has status "completed"  
+["eq?", ["path", [["key", "items"], ["wc_level"], ["key", "status"]]], "completed"]
+
+# Deep search for any "error" field that exists
+["exists?", ["path", [["wc_recursive"], ["key", "error"]]]]
+
+# Get names of users at specific indices 0 and 2
+# (This path would likely be used with a function that can handle a list of names,
+# or in a context where multiple names are expected)
+["path", [["key", "users"], ["indices", [0, 2]], ["key", "name"]]] 
+
+# Check if any log entry with a key matching "event_.*" has a "level" of "critical"
+["eq?", ["path", [["regex_key", "event_.*"], ["key", "level"]]], "critical"]
+
+# Check if the first three tags include "urgent"
+["in?", "urgent", ["path", [["key", "tags"], ["slice", null, 3, null]]]]
 ```
 
 ## Design Constraints
 
-1. **No Turing Completeness**: No loops, recursion, or unbounded computation
-2. **Filtering Focus**: Designed specifically for boolean filtering operations
-3. **List-based Paths**: No string parsing within the evaluator
-4. **Predictable Performance**: All operations have bounded execution time
-5. **Boolean Results Only**: All queries must return boolean values for filtering
+1. **No Turing Completeness**: No loops, recursion (in query language itself), or unbounded computation.
+2. **Filtering Focus**: Designed specifically for boolean filtering operations.
+3. **Tagged AST Paths**: Uniform, explicit path component representation.
+4. **Predictable Performance**: All operations have bounded execution time relative to data size and path complexity.
+5. **Boolean Results for Filtering**: Top-level queries (or conditions in `if`, `and`, `or`) must resolve to boolean values for filtering.
 
-This specification defines a minimal, focused JSON filtering language that's powerful enough for real-world use cases while remaining simple and predictable.
+This specification defines a minimal, focused JSON filtering language that\'s powerful enough for real-world use cases while remaining simple and predictable. The path system, with its tagged AST, enhances its explicitness and maintainability.

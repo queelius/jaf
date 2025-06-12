@@ -1,17 +1,14 @@
 import datetime
 import re
 import rapidfuzz
-import statistics
 import logging
-from .utils import exists, path_values, wrap
+from .utils import exists, eval_path, adapt_jaf_operator
 
 # Set up the logger
 logger = logging.getLogger(__name__)
 
 class jafError(Exception):
     pass
-
-
 
 class jaf_eval:
     """
@@ -27,37 +24,37 @@ class jaf_eval:
     # Regular functions that evaluate all arguments first
     funcs = {
         # predicates with strict type checking
-        'eq?': wrap(3, lambda x1, x2, obj: x1 == x2 and type(x1) == type(x2)),
-        'neq?': wrap(3, lambda x1, x2, obj: x1 != x2 or type(x1) != type(x2)),
-        'gt?': wrap(3, lambda x1, x2, obj: x1 > x2),
-        'gte?': wrap(3, lambda x1, x2, obj: x1 >= x2),
-        'lt?': wrap(3, lambda x1, x2, obj: x1 < x2),
-        'lte?': wrap(3, lambda x1, x2, obj: x1 <= x2),
-        'in?': wrap(3, lambda x1, x2, obj: x1 in x2),
-        'starts-with?': wrap(3, lambda start, value, obj: value.startswith(start)),
-        'ends-with?': wrap(3, lambda end, value, obj: value.endswith(end)),
+        'eq?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 == x2 and type(x1) == type(x2)),
+        'neq?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 != x2 or type(x1) != type(x2)),
+        'gt?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 > x2),
+        'gte?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 >= x2),
+        'lt?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 < x2),
+        'lte?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 <= x2),
+        'in?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 in x2),
+        'starts-with?': adapt_jaf_operator(3, lambda start, value, obj: value.startswith(start)),
+        'ends-with?': adapt_jaf_operator(3, lambda end, value, obj: value.endswith(end)),
 
         # string matching
-        'regex-match?': wrap(3, lambda pattern, value, obj: re.match(pattern, value) is not None),
-        'close-match?': wrap(3, lambda x1, x2, obj: rapidfuzz.fuzz.ratio(x1, x2) > 80),
-        'partial-match?': wrap(3, lambda x1, x2, obj: rapidfuzz.fuzz.partial_ratio(x1, x2) > 80),
+        'regex-match?': adapt_jaf_operator(3, lambda pattern, value, obj: re.match(pattern, value) is not None),
+        'close-match?': adapt_jaf_operator(3, lambda x1, x2, obj: rapidfuzz.fuzz.ratio(x1, x2) > 80),
+        'partial-match?': adapt_jaf_operator(3, lambda x1, x2, obj: rapidfuzz.fuzz.partial_ratio(x1, x2) > 80),
 
         # value extractors
-        'length': wrap(2, lambda x, obj: len(x)),
-        'type': wrap(2, lambda x, obj: type(x).__name__),
-        'keys': wrap(2, lambda x, obj: list(x.keys())),
+        'length': adapt_jaf_operator(2, lambda x, obj: len(x)),
+        'type': adapt_jaf_operator(2, lambda x, obj: type(x).__name__),
+        'keys': adapt_jaf_operator(2, lambda x, obj: list(x.keys())),
 
         # datetime functions
-        'now': wrap(1, lambda obj: datetime.datetime.now()),
-        'date': wrap(2, lambda x, obj: datetime.datetime.strptime(x, '%Y-%m-%d')),
-        'datetime': wrap(2, lambda x, obj: datetime.datetime.strptime(x, '%Y-%m-%d %H:%M:%S')),
-        'date-diff': wrap(3, lambda date1, date2, obj: date1 - date2),
-        'days': wrap(2, lambda datediff, obj: datediff.days),
-        'seconds': wrap(2, lambda datediff, obj: datediff.seconds),
+        'now': adapt_jaf_operator(1, lambda obj: datetime.datetime.now()),
+        'date': adapt_jaf_operator(2, lambda x, obj: datetime.datetime.strptime(x, '%Y-%m-%d')),
+        'datetime': adapt_jaf_operator(2, lambda x, obj: datetime.datetime.strptime(x, '%Y-%m-%d %H:%M:%S')),
+        'date-diff': adapt_jaf_operator(3, lambda date1, date2, obj: date1 - date2),
+        'days': adapt_jaf_operator(2, lambda datediff, obj: datediff.days),
+        'seconds': adapt_jaf_operator(2, lambda datediff, obj: datediff.seconds),
 
         # string functions
-        'lower-case': wrap(2, lambda s, obj: s.lower()),
-        'upper-case': wrap(2, lambda s, obj: s.upper()),
+        'lower-case': adapt_jaf_operator(2, lambda s, obj: s.lower()),
+        'upper-case': adapt_jaf_operator(2, lambda s, obj: s.upper()),
     }
 
     @staticmethod
@@ -100,10 +97,22 @@ class jaf_eval:
             if len(args) != 1:
                 raise ValueError(f"'path' expects 1 argument, got {len(args)}")
             path_expr = args[0]
-            # path argument should be a list of path components
             if not isinstance(path_expr, list):
                 raise ValueError("path argument must be a list of path components")
-            return path_values(path_expr, obj)
+
+            # Validate each component of the path expression
+            known_path_ops = {"key", "index", "indices", "slice", "regex_key", "wc_level", "wc_recursive"}
+            for component in path_expr:
+                if not isinstance(component, list):
+                    raise ValueError("Path component must be a list")
+                if not component:
+                    raise ValueError("Path component cannot be empty")
+                if not isinstance(component[0], str):
+                    raise ValueError("Path component operation must be a string")
+                if component[0] not in known_path_ops:
+                    raise ValueError(f"Unknown path operation: {component[0]}")
+            
+            return eval_path(path_expr, obj)
         
         elif op == 'exists?':
             if len(args) != 1:

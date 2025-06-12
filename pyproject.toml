@@ -18,7 +18,8 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "lark-parser"
+    "lark-parser",
+    "rapidfuzz" # Added based on jaf_eval.py import
 ]
 
 # Specify package discovery
@@ -34,3 +35,5 @@ Homepage = "https://github.com/queelius/jaf"
 Documentation = "https://github.com/queelius/jaf#readme"
 Repository = "https://github.com/queelius/jaf"
 
+[project.scripts]
+jaf = "jaf.console_script:main"

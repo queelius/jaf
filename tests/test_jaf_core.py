@@ -20,7 +20,7 @@ class TestJAFCore:
     
     def test_jaf_returns_indices(self):
         """Test that jaf returns indices, not objects"""
-        query = ["eq?", ["path", ["name"]], "Alice"]
+        query = ["eq?", ["path", [["key", "name"]]], "Alice"]
         result = jaf(self.test_data, query)
         assert result == [0]
         assert isinstance(result, list)
@@ -28,19 +28,19 @@ class TestJAFCore:
     
     def test_multiple_matches(self):
         """Test multiple matching objects"""
-        query = ["eq?", ["path", ["active"]], True]
+        query = ["eq?", ["path", [["key", "active"]]], True]
         result = jaf(self.test_data, query)
         assert result == [0, 2, 3]
     
     def test_no_matches(self):
         """Test query with no matches"""
-        query = ["eq?", ["path", ["name"]], "Nobody"]
+        query = ["eq?", ["path", [["key", "name"]]], "Nobody"]
         result = jaf(self.test_data, query)
         assert result == []
     
     def test_empty_data(self):
         """Test with empty data array"""
-        query = ["eq?", ["path", ["name"]], "Alice"]
+        query = ["eq?", ["path", [["key", "name"]]], "Alice"]
         result = jaf([], query)
         assert result == []
     
@@ -66,7 +66,7 @@ class TestJAFCore:
             123,
             {"name": "Charlie"}
         ]
-        query = ["eq?", ["path", ["name"]], "Bob"]
+        query = ["eq?", ["path", [["key", "name"]]], "Bob"]
         result = jaf(mixed_data, query)
         assert result == [2]  # Only the dict at index 2 matches
     
@@ -77,6 +77,6 @@ class TestJAFCore:
             None,
             {"name": "Bob"}
         ]
-        query = ["eq?", ["path", ["name"]], "Alice"]
+        query = ["eq?", ["path", [["key", "name"]]], "Alice"]
         result = jaf(malformed_data, query)
         assert result == [0]

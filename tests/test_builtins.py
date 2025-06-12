@@ -25,86 +25,86 @@ class TestPredicates:
     def test_equality_predicates(self):
         """Test eq? and neq? predicates"""
         # String equality
-        query = ["eq?", ["path", ["name"]], "Alice"]
+        query = ["eq?", ["path", [["key", "name"]]], "Alice"]
         assert jaf_eval.eval(query, self.test_obj) is True
         
-        query = ["eq?", ["path", ["name"]], "Bob"]
+        query = ["eq?", ["path", [["key", "name"]]], "Bob"]
         assert jaf_eval.eval(query, self.test_obj) is False
         
         # Number equality
-        query = ["eq?", ["path", ["age"]], 30]
+        query = ["eq?", ["path", [["key", "age"]]], 30]
         assert jaf_eval.eval(query, self.test_obj) is True
         
         # Boolean equality
-        query = ["eq?", ["path", ["active"]], True]
+        query = ["eq?", ["path", [["key", "active"]]], True]
         assert jaf_eval.eval(query, self.test_obj) is True
         
         # Null equality
-        query = ["eq?", ["path", ["profile"]], None]
+        query = ["eq?", ["path", [["key", "profile"]]], None]
         assert jaf_eval.eval(query, self.test_obj) is True
         
         # Not equal
-        query = ["neq?", ["path", ["name"]], "Bob"]
+        query = ["neq?", ["path", [["key", "name"]]], "Bob"]
         assert jaf_eval.eval(query, self.test_obj) is True
     
     def test_comparison_predicates(self):
         """Test gt?, gte?, lt?, lte? predicates"""
         # Greater than
-        query = ["gt?", ["path", ["age"]], 25]
+        query = ["gt?", ["path", [["key", "age"]]], 25]
         assert jaf_eval.eval(query, self.test_obj) is True
         
-        query = ["gt?", ["path", ["age"]], 35]
+        query = ["gt?", ["path", [["key", "age"]]], 35]
         assert jaf_eval.eval(query, self.test_obj) is False
         
         # Greater than or equal
-        query = ["gte?", ["path", ["age"]], 30]
+        query = ["gte?", ["path", [["key", "age"]]], 30]
         assert jaf_eval.eval(query, self.test_obj) is True
         
         # Less than
-        query = ["lt?", ["path", ["score"]], 90]
+        query = ["lt?", ["path", [["key", "score"]]], 90]
         assert jaf_eval.eval(query, self.test_obj) is True
         
         # Less than or equal
-        query = ["lte?", ["path", ["score"]], 85.5]
+        query = ["lte?", ["path", [["key", "score"]]], 85.5]
         assert jaf_eval.eval(query, self.test_obj) is True
     
     def test_containment_predicates(self):
         """Test in? predicate"""
         # String in array
-        query = ["in?", "python", ["path", ["tags"]]]
+        query = ["in?", "python", ["path", [["key", "tags"]]]]
         assert jaf_eval.eval(query, self.test_obj) is True
         
-        query = ["in?", "java", ["path", ["tags"]]]
+        query = ["in?", "java", ["path", [["key", "tags"]]]]
         assert jaf_eval.eval(query, self.test_obj) is False
         
         # Substring in string
-        query = ["in?", "alice", ["path", ["email"]]]
+        query = ["in?", "alice", ["path", [["key", "email"]]]]
         assert jaf_eval.eval(query, self.test_obj) is True
     
     def test_string_matching_predicates(self):
         """Test string matching predicates"""
         # starts-with?
-        query = ["starts-with?", "ali", ["path", ["email"]]]
+        query = ["starts-with?", "ali", ["path", [["key", "email"]]]]
         assert jaf_eval.eval(query, self.test_obj) is True
         
-        query = ["starts-with?", "bob", ["path", ["email"]]]
+        query = ["starts-with?", "bob", ["path", [["key", "email"]]]]
         assert jaf_eval.eval(query, self.test_obj) is False
         
         # ends-with?
-        query = ["ends-with?", ".com", ["path", ["email"]]]
+        query = ["ends-with?", ".com", ["path", [["key", "email"]]]]
         assert jaf_eval.eval(query, self.test_obj) is True
         
-        query = ["ends-with?", ".org", ["path", ["email"]]]
+        query = ["ends-with?", ".org", ["path", [["key", "email"]]]]
         assert jaf_eval.eval(query, self.test_obj) is False
     
     def test_regex_matching(self):
         """Test regex-match? predicate"""
         # Valid email pattern
-        query = ["regex-match?", r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", ["path", ["email"]]]
+        query = ["regex-match?", r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", ["path", [["key", "email"]]]]
         assert jaf_eval.eval(query, self.test_obj) is True
         
         # Invalid pattern
-        query = ["regex-match?", r"^\d+$", ["path", ["email"]]]
+        query = ["regex-match?", r"^\\\\d+$", ["path", [["key", "email"]]]]
         assert jaf_eval.eval(query, self.test_obj) is False
     
     def test_fuzzy_matching(self):
@@ -112,11 +112,11 @@ class TestPredicates:
         test_data = {"text": "hello world"}
         
         # Close match
-        query = ["close-match?", "hello world", ["path", ["text"]]]
+        query = ["close-match?", "hello world", ["path", [["key", "text"]]]]
         assert jaf_eval.eval(query, test_data) is True
         
         # Partial match
-        query = ["partial-match?", "hello", ["path", ["text"]]]
+        query = ["partial-match?", "hello", ["path", [["key", "text"]]]]
         assert jaf_eval.eval(query, test_data) is True
 
 
@@ -139,41 +139,41 @@ class TestValueExtractors:
     def test_length_extractor(self):
         """Test length extractor"""
         # Array length
-        query = ["length", ["path", ["items"]]]
+        query = ["length", ["path", [["key", "items"]]]]
         result = jaf_eval.eval(query, self.test_obj)
         assert result == 5
         
         # String length
-        query = ["length", ["path", ["name"]]]
+        query = ["length", ["path", [["key", "name"]]]]
         result = jaf_eval.eval(query, self.test_obj)
         assert result == 5
         
         # Use length in comparison
-        query = ["gt?", ["length", ["path", ["items"]]], 3]
+        query = ["gt?", ["length", ["path", [["key", "items"]]]], 3]
         assert jaf_eval.eval(query, self.test_obj) is True
     
     def test_type_extractor(self):
         """Test type extractor"""
-        query = ["type", ["path", ["name"]]]
+        query = ["type", ["path", [["key", "name"]]]]
         result = jaf_eval.eval(query, self.test_obj)
         assert result == "str"
         
-        query = ["type", ["path", ["items"]]]
+        query = ["type", ["path", [["key", "items"]]]]
         result = jaf_eval.eval(query, self.test_obj)
         assert result == "list"
         
-        query = ["type", ["path", ["profile"]]]
+        query = ["type", ["path", [["key", "profile"]]]]
         result = jaf_eval.eval(query, self.test_obj)
-        assert result == "dict"
+        assert result == "dict" # Should be dict, not NoneType, if profile is None, path eval returns []
     
     def test_keys_extractor(self):
         """Test keys extractor"""
-        query = ["keys", ["path", ["profile"]]]
+        query = ["keys", ["path", [["key", "profile"]]]]
         result = jaf_eval.eval(query, self.test_obj)
         assert set(result) == {"settings", "preferences"}
         
         # Use keys in condition
-        query = ["in?", "settings", ["keys", ["path", ["profile"]]]]
+        query = ["in?", "settings", ["keys", ["path", [["key", "profile"]]]]]
         assert jaf_eval.eval(query, self.test_obj) is True
     
     def test_string_transformers(self):
@@ -181,17 +181,17 @@ class TestValueExtractors:
         data = {"text": "Hello World"}
         
         # lower-case
-        query = ["lower-case", ["path", ["text"]]]
+        query = ["lower-case", ["path", [["key", "text"]]]]
         result = jaf_eval.eval(query, data)
         assert result == "hello world"
         
         # upper-case
-        query = ["upper-case", ["path", ["text"]]]
+        query = ["upper-case", ["path", [["key", "text"]]]]
         result = jaf_eval.eval(query, data)
         assert result == "HELLO WORLD"
         
         # Use in comparison
-        query = ["eq?", ["lower-case", ["path", ["text"]]], "hello world"]
+        query = ["eq?", ["lower-case", ["path", [["key", "text"]]]], "hello world"]
         assert jaf_eval.eval(query, data) is True
     
     def test_datetime_functions(self):
@@ -249,66 +249,66 @@ class TestLogicalOperators:
         """Test and special form with short-circuit evaluation"""
         # Both true
         query = ["and",
-                ["eq?", ["path", ["name"]], "Alice"],
-                ["eq?", ["path", ["active"]], True]]
+                ["eq?", ["path", [["key", "name"]]], "Alice"],
+                ["eq?", ["path", [["key", "active"]]], True]]
         assert jaf_eval.eval(query, self.test_obj) is True
         
         # First false (should short-circuit)
         query = ["and",
-                ["eq?", ["path", ["name"]], "Bob"],
-                ["eq?", ["path", ["active"]], True]]
+                ["eq?", ["path", [["key", "name"]]], "Bob"],
+                ["eq?", ["path", [["key", "active"]]], True]] # This part won't be eval'd by a short-circuiting 'and'
         assert jaf_eval.eval(query, self.test_obj) is False
         
         # Second false
         query = ["and",
-                ["eq?", ["path", ["name"]], "Alice"],
-                ["eq?", ["path", ["active"]], False]]
+                ["eq?", ["path", [["key", "name"]]], "Alice"],
+                ["eq?", ["path", [["key", "active"]]], False]]
         assert jaf_eval.eval(query, self.test_obj) is False
     
     def test_or_operator(self):
         """Test or special form with short-circuit evaluation"""
         # First true (should short-circuit)
         query = ["or",
-                ["eq?", ["path", ["name"]], "Alice"],
-                ["eq?", ["path", ["name"]], "Bob"]]
+                ["eq?", ["path", [["key", "name"]]], "Alice"],
+                ["eq?", ["path", [["key", "name"]]], "Bob"]] # This part won't be eval'd
         assert jaf_eval.eval(query, self.test_obj) is True
         
         # Second true
         query = ["or",
-                ["eq?", ["path", ["name"]], "Bob"],
-                ["eq?", ["path", ["active"]], True]]
+                ["eq?", ["path", [["key", "name"]]], "Bob"],
+                ["eq?", ["path", [["key", "active"]]], True]]
         assert jaf_eval.eval(query, self.test_obj) is True
         
         # Both false
         query = ["or",
-                ["eq?", ["path", ["name"]], "Bob"],
-                ["eq?", ["path", ["active"]], False]]
+                ["eq?", ["path", [["key", "name"]]], "Bob"],
+                ["eq?", ["path", [["key", "active"]]], False]]
         assert jaf_eval.eval(query, self.test_obj) is False
     
     def test_not_operator(self):
         """Test not special form"""
         # Negate true
-        query = ["not", ["eq?", ["path", ["name"]], "Alice"]]
+        query = ["not", ["eq?", ["path", [["key", "name"]]], "Alice"]]
         assert jaf_eval.eval(query, self.test_obj) is False
         
         # Negate false
-        query = ["not", ["eq?", ["path", ["name"]], "Bob"]]
+        query = ["not", ["eq?", ["path", [["key", "name"]]], "Bob"]]
         assert jaf_eval.eval(query, self.test_obj) is True
     
     def test_if_conditional(self):
         """Test if special form"""
         # Condition true
         query = ["if",
-                ["eq?", ["path", ["active"]], True],
-                ["path", ["name"]],
+                ["eq?", ["path", [["key", "active"]]], True],
+                ["path", [["key", "name"]]],
                 "inactive"]
         result = jaf_eval.eval(query, self.test_obj)
         assert result == "Alice"
         
         # Condition false
         query = ["if",
-                ["eq?", ["path", ["active"]], False],
-                ["path", ["name"]],
+                ["eq?", ["path", [["key", "active"]]], False],
+                ["path", [["key", "name"]]],
                 "inactive"]
         result = jaf_eval.eval(query, self.test_obj)
         assert result == "inactive"
@@ -318,16 +318,16 @@ class TestLogicalOperators:
         # (name == "Alice" AND active == True) OR score > 90
         query = ["or",
                 ["and",
-                 ["eq?", ["path", ["name"]], "Alice"],
-                 ["eq?", ["path", ["active"]], True]],
-                ["gt?", ["path", ["score"]], 90]]
+                 ["eq?", ["path", [["key", "name"]]], "Alice"],
+                 ["eq?", ["path", [["key", "active"]]], True]],
+                ["gt?", ["path", [["key", "score"]]], 90]]
         assert jaf_eval.eval(query, self.test_obj) is True
         
         # Complex nested with if
         query = ["if",
                 ["and",
-                 ["eq?", ["path", ["name"]], "Alice"],
-                 ["gt?", ["path", ["age"]], 25]],
+                 ["eq?", ["path", [["key", "name"]]], "Alice"],
+                 ["gt?", ["path", [["key", "age"]]], 25]],
                 True,
                 False]
         assert jaf_eval.eval(query, self.test_obj) is True
@@ -356,27 +356,43 @@ class TestErrorHandling:
             jaf_eval.eval(["if", "condition", "true-branch"], {})
     
     def test_type_errors_return_false(self):
-        """Test that type errors return false instead of raising"""
-        # Try to use string operation on number
-        test_obj = {"number": 42}
+        """Test that type errors in predicates generally lead to false, or PathValues behavior for adapt_jaf_operator."""
+        test_obj = {"number": 42, "text": "abc"}
         
-        # This should not raise an error, but might return false
-        try:
-            result = jaf_eval.eval(["starts-with?", "4", ["path", ["number"]]], test_obj)
-            # Result depends on implementation - might be false or raise
-        except (TypeError, AttributeError):
-            # Acceptable - type errors might be raised
-            pass
-    
+        # Try to use string operation on number with a predicate like 'starts-with?'
+        # The adapt_jaf_operator should handle this gracefully.
+        # For predicates, a type mismatch in an argument often means the condition is false.
+        query = ["starts-with?", "4", ["path", [["key", "number"]]]]
+        # jaf_eval.eval will use adapt_jaf_operator, which should manage type issues.
+        # For predicates, a type mismatch in an argument often means the condition is false.
+        assert jaf_eval.eval(query, test_obj) is False
+
+        # Try to use a numeric comparison on a string
+        query = ["gt?", ["path", [["key", "text"]]], 10]
+        assert jaf_eval.eval(query, test_obj) is False # Or should raise specific JAF error if desired
+
     def test_null_path_handling(self):
         """Test handling of null values in paths"""
-        test_obj = {"data": None}
+        test_obj = {"data": None, "nested": {"value": None}}
         
-        # Accessing path on null should return empty/null
-        query = ["path", ["data", "field"]]
+        # Accessing path on null should return empty list from eval_path
+        query = ["path", [["key", "data"], ["key", "field"]]]
         result = jaf_eval.eval(query, test_obj)
-        assert result == [] or result is None
-    
+        assert result == [] 
+
+        # Path leading to a None value
+        query = ["path", [["key", "nested"], ["key", "value"]]]
+        result = jaf_eval.eval(query, test_obj)
+        assert result is None # Direct access to a None value
+
+        # Using a path that results in None/[] with a predicate
+        query = ["eq?", ["path", [["key", "data"], ["key", "field"]]], "something"]
+        # 'path' will return [], 'eq?' will see [] == "something", which is False.
+        assert jaf_eval.eval(query, test_obj) is False
+
+        query = ["eq?", ["path", [["key", "nested"], ["key", "value"]]], None]
+        # 'path' will return None, 'eq?' will see None == None, which is True.
+        assert jaf_eval.eval(query, test_obj) is True
     def test_empty_list_as_query(self):
         """Test empty list as query raises error"""
         with pytest.raises(ValueError, match="Invalid query format"):

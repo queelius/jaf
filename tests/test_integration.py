@@ -96,150 +96,150 @@ class TestRealWorldScenarios:
     def test_simple_filtering(self):
         """Test simple field-based filtering"""
         # Find all active users
-        result = jaf(self.users, ["eq?", ["path", ["active"]], True])
+        result = jaf(self.users, ["eq?", ["path", [["key", "active"]]], True])
         assert result == [0, 1, 3]
         
         # Find Engineering department
-        result = jaf(self.users, ["eq?", ["path", ["department"]], "Engineering"])
+        result = jaf(self.users, ["eq?", ["path", [["key", "department"]]], "Engineering"])
         assert result == [0, 2]
         
         # Find users over 30
-        result = jaf(self.users, ["gt?", ["path", ["age"]], 30])
+        result = jaf(self.users, ["gt?", ["path", [["key", "age"]]], 30])
         assert result == [2]
     
     def test_string_operations(self):
         """Test string-based filtering operations"""
         # Find users with company email
-        result = jaf(self.users, ["ends-with?", "@company.com", ["path", ["email"]]])
+        result = jaf(self.users, ["ends-with?", "@company.com", ["path", [["key", "email"]]]])
         assert result == [0, 1, 2, 3]
         
         # Find users with names starting with 'A'
-        result = jaf(self.users, ["starts-with?", "A", ["path", ["name"]]])
+        result = jaf(self.users, ["starts-with?", "A", ["path", [["key", "name"]]]])
         assert result == [0]
         
         # Case-insensitive role search
-        result = jaf(self.users, ["eq?", ["lower-case", ["path", ["role"]]], "team lead"])
+        result = jaf(self.users, ["eq?", ["lower-case", ["path", [["key", "role"]]]], "team lead"])
         assert result == [2]
     
     def test_array_operations(self):
         """Test array-based filtering"""
         # Find users with Python skills
-        result = jaf(self.users, ["in?", "Python", ["path", ["skills"]]])
+        result = jaf(self.users, ["in?", "Python", ["path", [["key", "skills"]]]])
         assert result == [0, 2]
     
         # Find users with specific number of skills
-        result = jaf(self.users, ["eq?", ["length", ["path", ["skills"]]], 3])
+        result = jaf(self.users, ["eq?", ["length", ["path", [["key", "skills"]]]], 3])
         assert result == [0, 1, 3]
         
         # Find users with more than 3 skills
-        result = jaf(self.users, ["gt?", ["length", ["path", ["skills"]]], 3])
+        result = jaf(self.users, ["gt?", ["length", ["path", [["key", "skills"]]]], 3])
         assert result == [2]
     
     def test_nested_object_filtering(self):
         """Test filtering on nested object properties"""
         # Find users with dark theme
-        result = jaf(self.users, ["eq?", ["path", ["profile", "settings", "theme"]], "dark"])
+        result = jaf(self.users, ["eq?", ["path", [["key", "profile"], ["key", "settings"], ["key", "theme"]]], "dark"])
         assert result == [0, 2]
         
         # Find users with notifications enabled
-        result = jaf(self.users, ["eq?", ["path", ["profile", "settings", "notifications"]], True])
+        result = jaf(self.users, ["eq?", ["path", [["key", "profile"], ["key", "settings"], ["key", "notifications"]]], True])
         assert result == [0, 2, 3]
         
         # Find Spanish language users
-        result = jaf(self.users, ["eq?", ["path", ["profile", "preferences", "language"]], "es"])
+        result = jaf(self.users, ["eq?", ["path", [["key", "profile"], ["key", "preferences"], ["key", "language"]]], "es"])
         assert result == [3]
     
     def test_wildcard_filtering(self):
         """Test wildcard-based filtering"""
         # Find users with any completed project
-        result = jaf(self.users, ["eq?", ["path", ["projects", "*", "status"]], "completed"])
+        result = jaf(self.users, ["eq?", ["path", [["key", "projects"], ["wc_level"], ["key", "status"]]], "completed"])
         assert result == [0, 1, 2, 3]
         
         # Find users with any high priority project
-        result = jaf(self.users, ["eq?", ["path", ["projects", "*", "priority"]], "high"])
+        result = jaf(self.users, ["eq?", ["path", [["key", "projects"], ["wc_level"], ["key", "priority"]]], "high"])
         assert result == [0, 1, 2, 3]
         
         # Find users with any project named "API"
-        result = jaf(self.users, ["eq?", ["path", ["projects", "*", "name"]], "API"])
+        result = jaf(self.users, ["eq?", ["path", [["key", "projects"], ["wc_level"], ["key", "name"]]], "API"])
         assert result == [0]
     
     def test_complex_logical_conditions(self):
         """Test complex logical combinations"""
         # Active Engineering users
         result = jaf(self.users, ["and",
-                                 ["eq?", ["path", ["active"]], True],
-                                 ["eq?", ["path", ["department"]], "Engineering"]])
+                                 ["eq?", ["path", [["key", "active"]]], True],
+                                 ["eq?", ["path", [["key", "department"]]], "Engineering"]])
         assert result == [0]
         
         # Users in Engineering OR Design
         result = jaf(self.users, ["or",
-                                 ["eq?", ["path", ["department"]], "Engineering"],
-                                 ["eq?", ["path", ["department"]], "Design"]])
+                                 ["eq?", ["path", [["key", "department"]]], "Engineering"],
+                                 ["eq?", ["path", [["key", "department"]]], "Design"]])
         assert result == [0, 2, 3]
         
         # High earners (salary > 80k) with Python skills
         result = jaf(self.users, ["and",
-                                 ["gt?", ["path", ["salary"]], 80000],
-                                 ["in?", "Python", ["path", ["skills"]]]])
+                                 ["gt?", ["path", [["key", "salary"]]], 80000],
+                                 ["in?", "Python", ["path", [["key", "skills"]]]]])
         assert result == [0, 2]
     
     def test_conditional_logic(self):
         """Test conditional (if) logic"""
         # Check if user is senior (age > 30) or has leadership skills
         result = jaf(self.users, ["or",
-                                 ["gt?", ["path", ["age"]], 30],
-                                 ["in?", "Leadership", ["path", ["skills"]]]])
+                                 ["gt?", ["path", [["key", "age"]]], 30],
+                                 ["in?", "Leadership", ["path", [["key", "skills"]]]]])
         assert result == [2]
         
         # Complex conditional: if active, check department, else check salary
         result = jaf(self.users, ["if",
-                                 ["eq?", ["path", ["active"]], True],
-                                 ["eq?", ["path", ["department"]], "Engineering"],
-                                 ["gt?", ["path", ["salary"]], 100000]])
+                                 ["eq?", ["path", [["key", "active"]]], True],
+                                 ["eq?", ["path", [["key", "department"]]], "Engineering"],
+                                 ["gt?", ["path", [["key", "salary"]]], 100000]])
         assert result == [0, 2]  # Alice (active+Engineering), Charlie (inactive+high salary)
     
     def test_existence_checks(self):
         """Test existence-based filtering"""
         # Users with profile settings
-        result = jaf(self.users, ["exists?", ["path", ["profile", "settings"]]])
+        result = jaf(self.users, ["exists?", ["path", [["key", "profile"], ["key", "settings"]]]])
         assert result == [0, 1, 2, 3]
         
         # Users with projects
-        result = jaf(self.users, ["exists?", ["path", ["projects"]]])
+        result = jaf(self.users, ["exists?", ["path", [["key", "projects"]]]])
         assert result == [0, 1, 2, 3]
         
         # Check for non-existent field
-        result = jaf(self.users, ["exists?", ["path", ["bonus"]]])
+        result = jaf(self.users, ["exists?", ["path", [["key", "bonus"]]]])
         assert result == []
     
     def test_negation_patterns(self):
         """Test negation patterns"""
         # Not active users
-        result = jaf(self.users, ["not", ["eq?", ["path", ["active"]], True]])
+        result = jaf(self.users, ["not", ["eq?", ["path", [["key", "active"]]], True]])
         assert result == [2]
         
         # Users not in Engineering
-        result = jaf(self.users, ["not", ["eq?", ["path", ["department"]], "Engineering"]])
+        result = jaf(self.users, ["not", ["eq?", ["path", [["key", "department"]]], "Engineering"]])
         assert result == [1, 3]
         
         # Users without Python skills
-        result = jaf(self.users, ["not", ["in?", "Python", ["path", ["skills"]]]])
+        result = jaf(self.users, ["not", ["in?", "Python", ["path", [["key", "skills"]]]]])
         assert result == [1, 3]
     
     def test_salary_and_compensation_queries(self):
         """Test salary-based filtering scenarios"""
         # High earners
-        result = jaf(self.users, ["gte?", ["path", ["salary"]], 90000])
+        result = jaf(self.users, ["gte?", ["path", [["key", "salary"]]], 90000])
         assert result == [0, 2]
         
         # Mid-range earners
         result = jaf(self.users, ["and",
-                                 ["gte?", ["path", ["salary"]], 70000],
-                                 ["lt?", ["path", ["salary"]], 100000]])
+                                 ["gte?", ["path", [["key", "salary"]]], 70000],
+                                 ["lt?", ["path", [["key", "salary"]]], 100000]])
         assert result == [0, 3]
         
         # Entry level salaries
-        result = jaf(self.users, ["lt?", ["path", ["salary"]], 70000])
+        result = jaf(self.users, ["lt?", ["path", [["key", "salary"]]], 70000])
         assert result == [1]
 
 
@@ -256,11 +256,11 @@ class TestEdgeCases:
         ]
         
         # Find objects with empty items
-        result = jaf(data, ["eq?", ["length", ["path", ["items"]]], 0])
+        result = jaf(data, ["eq?", ["length", ["path", [["key", "items"]]]], 0])
         assert result == [0, 3]  # Alice and empty name user
         
         # Find objects with non-empty names
-        result = jaf(data, ["neq?", ["path", ["name"]], ""])
+        result = jaf(data, ["neq?", ["path", [["key", "name"]]], ""])
         assert result == [0, 1, 2]
     
     def test_mixed_data_types(self):
@@ -274,15 +274,15 @@ class TestEdgeCases:
         ]
         
         # Find numeric values
-        result = jaf(data, ["eq?", ["type", ["path", ["value"]]], "int"])
+        result = jaf(data, ["eq?", ["type", ["path", [["key", "value"]]]], "int"])
         assert result == [0]
         
         # Find string values
-        result = jaf(data, ["eq?", ["type", ["path", ["value"]]], "str"])
+        result = jaf(data, ["eq?", ["type", ["path", [["key", "value"]]]], "str"])
         assert result == [1]
         
         # Find list values
-        result = jaf(data, ["eq?", ["type", ["path", ["value"]]], "list"])
+        result = jaf(data, ["eq?", ["type", ["path", [["key", "value"]]]], "list"])
         assert result == [4]
     
     def test_deeply_nested_structures(self):
@@ -313,11 +313,11 @@ class TestEdgeCases:
         ]
         
         # Deep path access
-        result = jaf(data, ["eq?", ["path", ["level1", "level2", "level3", "level4", "level5", "target"]], "found"])
+        result = jaf(data, ["eq?", ["path", [["key", "level1"], ["key", "level2"], ["key", "level3"], ["key", "level4"], ["key", "level5"], ["key", "target"]]], "found"])
         assert result == [0]
         
         # Recursive wildcard search
-        result = jaf(data, ["eq?", ["path", ["**", "target"]], "found"])
+        result = jaf(data, ["eq?", ["path", [["wc_recursive"], ["key", "target"]]], "found"])
         assert result == [0]
     
     def test_large_arrays(self):
@@ -333,10 +333,10 @@ class TestEdgeCases:
             })
         
         # Find active users (should be 50 users: 0, 2, 4, ..., 98)
-        result = jaf(large_data, ["eq?", ["path", ["active"]], True])
+        result = jaf(large_data, ["eq?", ["path", [["key", "active"]]], True])
         assert len(result) == 50
         assert all(i % 2 == 0 for i in result)
         
         # Find high scorers
-        result = jaf(large_data, ["gt?", ["path", ["score"]], 900])
+        result = jaf(large_data, ["gt?", ["path", [["key", "score"]]], 900])
         assert len(result) == 9  # Users with scores 910, 920, ..., 990
