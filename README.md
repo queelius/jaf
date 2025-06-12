@@ -1,265 +1,184 @@
 # `jaf` - JSON Array Filter
 
-`jaf` is a versatile filtering system designed to sift through JSON arrays.
-It allows users to filter JSON arrays based on complex conditions using a
-simple and intuitive query language. The query language is designed to be
-easy to use and understand, while still being powerful enough to handle
-complex filtering tasks.
+`jaf` is a simple, focused filtering system for JSON arrays. It's designed to be **not Turing-complete** and focuses solely on filtering with predictable boolean results.
+
+## Core Philosophy
+
+- **Simple**: Easy to understand and debug
+- **Predictable**: Every query returns boolean results for filtering
+- **Secure**: No arbitrary code execution or side effects
+- **Focused**: Designed specifically for JSON array filtering
+
+## Query Formats
+
+JAF supports two query formats:
+
+### 1. AST Format (Nested Lists)
+Direct S-expression syntax: `[operator, arg1, arg2, ...]`
+
+```python
+["eq?", ["path", ["name"]], "John"]
+["and", 
+  ["exists?", ["path", ["email"]]], 
+  ["gt?", ["path", ["stars"]], 100]]
+```
+
+### 2. DSL Format (Human-Readable)
+Intuitive infix notation that compiles to AST:
+
+```text
+:name eq? "John"
+:email exists? AND :stars gt? 100
+```
+
+## DSL Grammar
+
+The DSL provides a more natural syntax that gets parsed into the AST format:
+
+### Basic Syntax
+```text
+# Path access (prefixed with :)
+:name                    # ["path", ["name"]]
+:user.email             # ["path", ["user", "email"]]
+:items.*.status         # ["path", ["items", "*", "status"]]
+:data.0.value           # ["path", ["data", 0, "value"]]
+
+# Predicates
+:name eq? "John"        # ["eq?", ["path", ["name"]], "John"]
+:stars gt? 100          # ["gt?", ["path", ["stars"]], 100]
+
+# Function calls
+(lower-case :language) eq? "python"   # ["eq?", ["lower-case", ["path", ["language"]]], "python"]
+(length :items) gt? 5                 # ["gt?", ["length", ["path", ["items"]]], 5]
+
+# Logical operations
+:active eq? true AND :stars gt? 100   # ["and", ["eq?", ["path", ["active"]], true], ["gt?", ["path", ["stars"]], 100]]
+:type eq? "repo" OR :type eq? "fork"  # ["or", ["eq?", ["path", ["type"]], "repo"], ["eq?", ["path", ["type"]], "fork"]]
+
+# Grouping with parentheses
+(:stars gt? 100) AND (:forks gt? 50)
+```
+
+### DSL to AST Examples
+
+| DSL | AST |
+|-----|-----|
+| `:name eq? "John"` | `["eq?", ["path", ["name"]], "John"]` |
+| `(lower-case :language) eq? "python"` | `["eq?", ["lower-case", ["path", ["language"]]], "python"]` |
+| `:items.*.status eq? "done"` | `["eq?", ["path", ["items", "*", "status"]], "done"]` |
+| `:active eq? true AND :stars gt? 100` | `["and", ["eq?", ["path", ["active"]], true], ["gt?", ["path", ["stars"]], 100]]` |
 
 ## Builtins
 
-We refer to the available operators as `builtins`. These are the functions that
-are available to the user to use in their queries. The `builtins` are functions
-that are used to compare values, perform operations, or combine other functions
-to create complex queries. The `builtins` are the core of the filtering system
-and are used to create queries that can filter JSON arrays based on the
-specified conditions.
+### 1. Special Forms (Custom Evaluation)
+- `path` - Extract values from nested structures
+- `exists?` - Check if a path exists
+- `if` - Conditional evaluation
+- `and`, `or`, `not` - Logical operations with short-circuit evaluation
 
-Predicates conanically end with a `?`, e.g., `eq?` (eauals) and `lt?` (less-than).
-General operators do not canocially end with a `?`, e.g., `lower-case` and `or`.
-The predicates are used to compare values, while the operators are used to combine
-predicates or perform other operations that make the desired comparison possible
-or the desired result achievable.
+### 2. Predicates (Return Boolean)
+Functions that canonically end with `?` and return true/false:
+- **Comparison**: `eq?`, `neq?`, `gt?`, `gte?`, `lt?`, `lte?`
+- **Containment**: `in?`
+- **String matching**: `starts-with?`, `ends-with?`, `regex-match?`, `close-match?`, `partial-match?`
 
-> *Note*: We do not use operators like `==` or `>`, but instead use `eq?` and
-> `gt?`. The primary reason for this choice is that we provide a command-line
-> tool, and if we used `>` it would be interpreted as a redirection operator
-> by the shell.
+### 3. Value Extractors (Support Predicates)
+Functions that extract or transform values for comparison:
+- **Data access**: `length`, `type`, `keys`
+- **String transformation**: `lower-case`, `upper-case`
+- **Date/time**: `now`, `date`, `datetime`, `date-diff`, `days`, `seconds`
 
-For example, the `lower-case` operator is used to convert a string to lowercase before
-comparison, so that the comparison is case-insensitive. Here is an example
-query that uses the `lower-case` operator:
+## Path System
 
-```python
-['and', ['eq?', ['lower-case', ['path', 'language']], 'python']]
-```
+Paths support:
+- **Nested objects**: `:user.email` → `obj["user"]["email"]`
+- **Array indices**: `:data.0.value` → `obj["data"][0]["value"]`
+- **Wildcards**: 
+  - `*` matches any single field/index: `:items.*.name`
+  - `**` matches any field at any depth: `:**.error`
 
-This query will filter repositories where the `language` field is equal to
-`"python"`, regardless of the case of the letters.
-
-> *Note*: Depending on the `builtins`, the query language can be Turing complete.
-> e.g., it would be trivial to add a `lambda` builtin that allows users to define
-> their own functions. However, this is not a safe practice, as it would allow
-> users to execute arbitrary code. Therefore, we have chosen to limit the default
-> `builtins` to a safe set of functions that are useful for filtering JSON arrays.
-> If you need additional functionality, you can always extend or provide your own
-> set of `builtins` to include the functions you need. As a limiting case, a
-> `lambda` builtin could be added to the `builtins` to allow users to define their
-> own functions.
-
-## Query Language
-
-Queries are represented using an Abstract Syntax Tree (AST) based on nested
-lists, where each list takes the form of `[<expressio>, <arg1>, <arg2>,...]`.
-
-We also provide a Domain-Specific Language (DSL) that allows users to craft
-queries using an intuitive infix notation. The DSL is converted into the AST
-before being evaluated. Here is the EBNF for the query language:
-
-```ebnf
-%import common.WS
-%import common.ESCAPED_STRING
-%import common.SIGNED_NUMBER
-%ignore WS
-
-start: expr
-
-expr: bool_expr
-
-?bool_expr: or_expr
-
-?or_expr: and_expr
-        | or_expr OR and_expr -> or_operation
-
-?and_expr: primary
-        | and_expr AND primary -> and_operation
-
-?primary: operand
-       | "(" bool_expr ")"
-
-?operand: condition
-       | function_call
-       | path
-       | bare_path
-       | value
-
-condition: operand operator operand
-
-operator: IDENTIFIER
-
-function_call: "(" IDENTIFIER operand+ ")"
-
-path: ":" path_component ("." path_component)*
-
-bare_path: path_component ("." path_component)*
-
-path_component: IDENTIFIER 
-             | STAR  
-             | DOUBLESTAR
-
-STAR: "*" 
-DOUBLESTAR: "**"
-
-value: ESCAPED_STRING
-     | NUMBER
-     | BOOLEAN
-
-BOOLEAN: "True" | "False"
-NUMBER: SIGNED_NUMBER
-
-IDENTIFIER: /[a-zA-Z][a-zA-Z0-9_\-\?]*/
-
-OR: "OR"
-AND: "AND"
-```
-
-For example, consider the following query AST:
-
-```python
-['and',
-    ['eq?', ['lower-case', ['path', 'language']], 'python'],
-    ['gt?', ['path', 'stars'], 100],
-    ['eq?', ['path','owner.name'], ['path': 'user.name']]]
-```
-
-It has an equivalent DSL given by:
-
-```text
-(lower-case :language) eq? "python" AND :stars gt? 100 AND :owner.name eq? :user.name
-```
-
-We see that we have a special notation for `path` commands: we prefix the field
-name with a colon: `:`, such as `:language` and `:owner.name`. This is to distinguish
-field names from other strings in the query. The `path`command is used to
-access the value of a field in the JSON array. For example, `:owner.name` will
-access the value of the `name` field in the `owner` object where as `owner.name`
-will be interpreted as a string.
-
-Paths can also include two kinds of wildcards, `*` and `**`. The wildcard `*`
-matches any fieldname, e.g., `a.*.b.c` will match `a.d.b.c.a` (it will return `{'c': 'a'}`.
-The wildcard `**` will match any fieldname at any depth after the specified path,
-e.g., `a.**.c` will match `a.b.c.a` (it will also return `{'c': 'a'}`. You can use
-as many wildcards as you wish in a single query. If *any* of the objects denoted by
-a wildcard path satisfy the query, the object satisfies the query.
-
-The DSL is converted into the AST (see the above EBNF) before being evaluated.
-This query AST is evaluated against each element of the JSON array, and if it
-returns `True`, the corresponding index into the JSON array for that element is
-added to the result. This is how we filter the JSON array. Alternatively, since
-queries can also specify general functions, the result may be a value rather
-than a Boolean, e.g., `['lower-case', 'Python']` will return `'python`.
-
-## Relative Advantages of AST and DSL
-
-Both have their own advantages and can be used interchangeably based on the
-user's preference. The AST is:
-
-- programmatic
-- easily manipulated
-- can be generated from a DSL
-- easily serialized for storage or transmission
-- allows for operators to be queries, facilitating some meta-programming
-
-The DSL is:
-
-- More human-readable, e.g. infix notation for logical operators
-- Easier to write and understand
-- Compact
-
-## Installation
-
-You can install `jaf` via PyPI:
-
-```bash
-pip install `jaf`
-```
-
-Or install directly from the source:
-
-```bash
-git clone https://github.com/queelius/jaf.git
-cd jaf
-pip install .
-```
+If a wildcard path matches multiple values, the predicate succeeds if **any** match satisfies the condition.
 
 ## Examples
 
-Suppose we have a list of repositories in the following format:
-
+Given this data:
 ```python
 repos = [
     {
-        'id': 1,
         'name': 'DataScienceRepo',
-        'language': 'Python',
+        'language': 'Python', 
         'stars': 150,
-        'forks': 30,
-        'description': 'A repository for data science projects.',
-        'owner': {
-            'name': 'alice',
-            'active': True
-        }
+        'owner': {'name': 'alice', 'active': True},
+        'items': [{'status': 'done'}, {'status': 'pending'}]
     },
-    # ... other repositories ...
+    # ... more repos
 ]
 ```
 
-### AST-Based Query
-
-Filter repositories where the lower-case of `language` is `"python"`,
-`owner.active` is `True`, and `stars` are greater than `100`:
-
+### DSL Examples
 ```python
-query = ['and',
-    ['eq?',
-        ['lower-case', ['path', 'language'], 'Python']],
-        ['path', 'owner.active'],
-        ['gt?', ['path', 'stars'], 100]]
+import jaf
 
-filtered = jaf(sample_repos, query_ast)
-print("Filtered Repositories:")
-pprint(filtered)
-# Output: [1, ...]
+# Basic filtering
+result = jaf(repos, ':language eq? "Python"')
+
+# Case-insensitive search  
+result = jaf(repos, '(lower-case :language) eq? "python"')
+
+# Complex conditions
+result = jaf(repos, ':owner.active eq? true AND :stars gt? 100')
+
+# Wildcard usage
+result = jaf(repos, ':items.*.status eq? "done"')
+
+# Multiple conditions with grouping
+result = jaf(repos, '(:stars gt? 100) AND (:language eq? "Python" OR :language eq? "JavaScript")')
 ```
 
-### DSL-Based Query
-
-The equivalent query using the DSL:
-
+### AST Examples
 ```python
-query = '(lower-case :language) eq? "python" AND :owner.active AND :stars gt? 100'
-filtered = jaf(repos, query)
-print("Filtered Repositories:")
-print(filtered)
-# Output: [1, ...]
+# Same queries using direct AST format
+result = jaf(repos, ["eq?", ["path", ["language"]], "Python"])
+
+result = jaf(repos, ["eq?", ["lower-case", ["path", ["language"]]], "python"])
+
+result = jaf(repos, ["and", 
+    ["eq?", ["path", ["owner", "active"]], True],
+    ["gt?", ["path", ["stars"]], 100]])
 ```
 
-### Complex Queries
+## Output Format
 
-Combine multiple conditions with logical operators.
+JAF returns a simple list of indices for objects that matched the filter:
 
 ```python
-query = ':language neq? "R" AND (:stars gt? 100 OR :forks gt? 50)'
-filtered = jaf(repos, query)
-print("Filtered Repositories:")
+repos = [{"name": "A"}, {"name": "B"}, {"name": "C"}]
+result = jaf(repos, ':name eq? "B"')
+print(result)  # [1] - index of the matching object
 ```
 
-### Handling Errors
+## Installation
 
-Catch and handle filtering errors gracefully.
+```bash
+pip install jaf
+```
 
-```python
-try:
-    invalid_query = 'language unknown "Python"'
-    jaf(repos, invalid_query)
-except FilterError as e:
-    print(f"Error: {e}")
+## Testing DSL Parsing
+
+You can test DSL parsing using the included parser:
+
+```bash
+# Parse a single expression
+python -m jaf.dsl.parse --expr ':name eq? "John" AND :stars gt? 100'
+
+# See example expressions
+python -m jaf.dsl.parse --examples
 ```
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request for any enhancements or bug fixes.
+Contributions are welcome! Please open an issue or submit a pull request.
 
 ## License
 
-This project is licensed under the MIT License. See the `LICENSE` file for details.
+MIT License. See `LICENSE` file for details.

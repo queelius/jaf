@@ -1,1 +1,2 @@
-from .jaf import jaf, jafError, jaf_eval
+from .jaf import jaf, jafError
+from .jaf_eval import jaf_eval

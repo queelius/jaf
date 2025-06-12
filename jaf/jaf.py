@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 class jafError(Exception):
     pass
 
-def jaf(data: List[Dict], query: Union[List, str]) -> List[Dict]:
+def jaf(data: List[Dict], query: Union[List, str]) -> List[int]:
     """
     Filter JSON arrays of objects based on a query AST (nested lists) or DSL
     string.
@@ -18,7 +18,7 @@ def jaf(data: List[Dict], query: Union[List, str]) -> List[Dict]:
         query: Nested list/dict AST or a DSL string representing the filter.
 
     Returns:
-        List of objects (dictionaries) that satisfy the query.
+        List of indices of objects that satisfy the query.
 
     Raises:
         jafError: If query is invalid or evaluation fails.
@@ -35,27 +35,25 @@ def jaf(data: List[Dict], query: Union[List, str]) -> List[Dict]:
             raise
 
     logger.debug(f"Applying {query=} to {len(data)} objects.")
-    value_results = {}
     try:
         results = []
-        for i,  obj in enumerate(data):
+        for i, obj in enumerate(data):
             if isinstance(obj, dict):
                 logger.debug(f"Evaluating {query=} against {obj=}.")
                 result = jaf_eval.eval(query, obj)
-                if type(result) == bool:
+                if isinstance(result, bool):
                     if result:
                         logger.debug("Object satisfied the query.")
                         results.append(i)
                     else:
                         logger.debug("Object did not satisfy the query.")
                 else:
-                    logger.debug(f"Retuned a non-boolean value: {result}. Skipping object.")
-                    value_results[i] = result
+                    logger.warning(f"Query returned non-boolean value: {result}. Skipping object.")
             else:
-                logger.error("Skipping non-dictionary object: {obj}.")
+                logger.error(f"Skipping non-dictionary object: {obj}.")
     except jafError as e:
         logger.error(f"Failed to evaluate query: {e}")
         raise
 
-    return {"matching-indices" : results, "value-results": value_results}
+    return results
 

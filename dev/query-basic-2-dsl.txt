@@ -1,1 +1,0 @@
-(lower-case :language) eq? "python" OR :stars gt? 100

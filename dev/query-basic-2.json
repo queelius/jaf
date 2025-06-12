@@ -1,3 +1,0 @@
-[ "or",
-    ["eq?", ["lower-case", ["path", "language"]], "python"],
-    ["gt?", ["path", "stars"], 100]]

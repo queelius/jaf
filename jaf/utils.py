@@ -7,25 +7,19 @@ WildcardResults = NewType('WildcardResults', List[Any])
 
 logger = logging.getLogger(__name__)
 
-def path_values(path: str, obj: Any) -> WildcardResults:
+def path_values(path_components: list, obj: Any):
     """
-    Retrieves values from a nested dictionary using dot notation with support for wildcards.
-
+    Retrieves values from a nested dictionary using a list of path components.
+    
+    :param path_components: List of path components (strings, integers, or wildcards)
     :param obj: The dictionary object.
-    :param path: The dot-separated path string.
-                 - Normal keys match exact dictionary keys.
-                 - '*' matches exactly one level of any key.
-                 - '**' matches zero or more levels of any keys.
-    :return: A list of all matched values.
+    :return: A single value for non-wildcard paths, or a list for wildcard paths.
     """
-
-    path = path.strip()
-    if path == '$':
-        # root node
-        return WildcardResults(obj)
-
-    parts = path.split('.')
-
+    if not path_components:
+        return obj
+    
+    has_wildcards = any(comp in ['*', '**'] for comp in path_components)
+    
     def _match_path(cur_obj: Any, parts: List[str]):
         if not parts:
             # No more parts to match, return the current object as a match
@@ -45,6 +39,10 @@ def path_values(path: str, obj: Any) -> WildcardResults:
                 for v in cur_obj.values():
                     # Keep '**' in the current pattern to allow multiple steps down
                     results.extend(_match_path(v, parts))
+            # 3. If current is a list, try going deeper on all elements
+            elif isinstance(cur_obj, list):
+                for item in cur_obj:
+                    results.extend(_match_path(item, parts))
 
             logger.debug(f"[match_path] ** results: {results}")
             return results
@@ -55,68 +53,49 @@ def path_values(path: str, obj: Any) -> WildcardResults:
             if isinstance(cur_obj, dict):
                 for v in cur_obj.values():
                     results.extend(_match_path(v, parts[1:]))
+            elif isinstance(cur_obj, list):
+                for item in cur_obj:
+                    results.extend(_match_path(item, parts[1:]))
 
             logger.debug(f"[match_path] * results: {results}")
             return results
 
         else:
             results = []
-            # Normal key
+            # Handle both string keys and integer indices
             if isinstance(cur_obj, dict) and part in cur_obj:
+                results.extend(_match_path(cur_obj[part], parts[1:]))
+            elif isinstance(cur_obj, list) and isinstance(part, int) and 0 <= part < len(cur_obj):
                 results.extend(_match_path(cur_obj[part], parts[1:]))
             logger.debug(f"[match_path] Normal key results: {results}")
             return results
 
-    return WildCardResults(_match_path(obj, parts))
+    results = _match_path(obj, path_components)
+    
+    # Always return empty list for no results
+    if len(results) == 0:
+        return []
+    
+    # For non-wildcard paths, if exactly one result, return the value directly
+    # For wildcard paths, always return lists
+    if not has_wildcards and len(results) == 1:
+        return results[0]
+    
+    return results
 
-def exists(query, obj):
+def exists(path, obj):
     """
     Checks if the path exists in the object.
     For wildcard paths, checks if there's at least one match.
     """
-    def _helper(o, type):
-        if isinstance(o, dict):
-            return any([_helper(v) for v in o.values()])
-        elif isinstance(o, list):
-            return any([_helper(v) for v in o])
-        elif isinstance(o, type):
-            return o == args[0]
+    try:
+        values = path_values(path, obj)
+        if isinstance(values, list):
+            return len(values) > 0
         else:
-            return False
-
-    if isinstance(query, list):
-        op = query[0]
-        args = query[1:]
-
-        if len(args) == 0:
-            raise ValueError("No arguments provided for 'exists' function.")
-
-        if op == 'path':
-            if len(args) == 1:
-                return bool(_path_value(args[0], obj))
-            else:
-                return all([_exists(x, obj) for x in args])
-            
-        # elif op == 'op':
-        #     if len(args) == 1:
-        #         return args[0] in obj
-        #     else:
-        #         return all([_exists(x, obj) for x in args])
-        
-        elif op == 'number':
-            if len(args) == 1:
-                return _helper(obj, (int, float))
-            else:
-                return all([_exists(x, obj) for x in args])
-
-        elif op == 'str':
-            if len(args) == 1:
-                return _helper(obj, str)
-            else:
-                return all([_exists(x, obj) for x in args])
-            
-        else:
-            raise ValueError(f"Unknown operator: {op}")
+            return values is not None
+    except:
+        return False
 
 def wrap(n, func):
     """
@@ -136,17 +115,16 @@ def wrap(n, func):
                 logger.debug(f"[wrap_func] Args: {args}, expected {n} args, got {len(args)+1}.") 
                 raise ValueError("Unexpected number of arguments.")
 
-            # Convert non-list arguments to single-element lists
-            arg_lists = [arg if isinstance(arg, list) else [arg] for arg in args]
+            # Debug logging for length function
+            if hasattr(func, '__name__') or 'length' in str(func):
+                print(f"DEBUG WRAP: Function called with args: {args}, obj keys: {list(obj.keys()) if isinstance(obj, dict) else 'not dict'}")
 
-            # Generate all possible combinations of arguments
-            if n != -1:
-                combinations = list(itertools.product(*arg_lists))
-            else:
-                # For variable arguments, assume all combinations are direct
-                combinations = [args]
+            # For simple cases with no wildcard expansion needed, call directly
+            results = [func(*args, obj)]
 
-            results = [func(*combo, obj) for combo in combinations]
+            # Debug logging for length function
+            if hasattr(func, '__name__') or 'length' in str(func):
+                print(f"DEBUG WRAP: Function results: {results}")
 
             logger.debug(f"[wrap_func] Results: {results}")
 
@@ -167,6 +145,11 @@ def wrap(n, func):
 
             return results
 
+        except (TypeError, AttributeError) as e:
+            # Handle type errors gracefully by returning False
+            logger.debug(f"[wrap_func] Type error: {e}")
+            print(f"DEBUG WRAP: Type error caught: {e}, args: {args}")
+            return False
         except Exception as e:
             logger.error(f"Error evaluating function: {e}")
             raise e

@@ -21,7 +21,6 @@ expr: bool_expr
 ?operand: condition
        | function_call
        | path
-       | bare_path
        | value
 
 condition: operand operator operand
@@ -32,11 +31,10 @@ function_call: "(" IDENTIFIER operand+ ")"
 
 path: ":" path_component ("." path_component)*
 
-bare_path: path_component ("." path_component)*
-
 path_component: IDENTIFIER 
              | STAR  
              | DOUBLESTAR
+             | NUMBER
 
 STAR: "*" 
 DOUBLESTAR: "**"
@@ -44,11 +42,12 @@ DOUBLESTAR: "**"
 value: ESCAPED_STRING
      | NUMBER
      | BOOLEAN
+     | "null"
 
-BOOLEAN: "True" | "False"
+BOOLEAN: "true" | "false"
 NUMBER: SIGNED_NUMBER
 
-IDENTIFIER: /[a-zA-Z][a-zA-Z0-9_\-\?]*/
+IDENTIFIER: /(?!true|false|null)[a-zA-Z][a-zA-Z0-9_\-\?]*/
 
 OR: "OR"
 AND: "AND"

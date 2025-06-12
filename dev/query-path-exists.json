@@ -1,4 +1,0 @@
-["or",
-    ["exists?", ["path", "owner.*.active"]],
-    ["exists?", ["path", "owner.active"]]
-]

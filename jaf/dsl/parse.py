@@ -23,10 +23,10 @@ class DSLTransformer(Transformer):
 
     def condition(self, items):
         left_operand, op, right_operand = items
-        return [str(op), left_operand, right_operand]  # Convert op to string
+        return [str(op), left_operand, right_operand]
 
     def operator(self, items):
-        return str(items[0])  # Convert operator to string
+        return str(items[0])
 
     def operand(self, items):
         return items[0]
@@ -41,46 +41,55 @@ class DSLTransformer(Transformer):
         if isinstance(component, Token):
             if component.type == 'STAR':
                 return '*'
-            if component.type == 'DOUBLESTAR':
+            elif component.type == 'DOUBLESTAR':
                 return '**'
-            return str(component)
-        return str(component)
+            elif component.type == 'NUMBER':
+                try:
+                    return int(component.value)
+                except ValueError:
+                    return float(component.value)
+            else:
+                return str(component.value)
+        return component
 
     def path(self, items):
         if len(items) < 1:
             raise ValueError("Path must contain at least one component after ':'")
         
-        components = [str(item) for item in items]  # Include all components
-        path_str = '.'.join(components)
-        return ['path', path_str]
-
-    def bare_path(self, items):
-        """
-        Handles paths without the ':' prefix, used in function calls like path-exists?
-        Example: owner.*.active
-        """
-        path_str = '.'.join([str(item) for item in items])
-        return ['path', path_str]
+        # Convert to list format: ["path", [component1, component2, ...]]
+        components = []
+        for item in items:
+            components.append(item)
+        
+        return ['path', components]
 
     def value(self, items):
         return items[0]
 
     def BOOLEAN(self, token):
-        return token.value == 'True'
+        return token.value == 'true'
 
     def NUMBER(self, token):
         try:
-            return int(token)
+            return int(token.value)
         except ValueError:
-            return float(token)
+            return float(token.value)
 
     def IDENTIFIER(self, token):
-        return str(token)
+        return str(token.value)
 
     def ESCAPED_STRING(self, token):
-        return token.value[1:-1]  # Remove surrounding quotes
+        # Remove surrounding quotes and handle escape sequences
+        raw_string = token.value[1:-1]
+        raw_string = raw_string.replace('\\"', '"')
+        raw_string = raw_string.replace('\\\\', '\\')
+        return raw_string
 
-    
+    def __default_token__(self, token):
+        if token.value == "null":
+            return None
+        return token.value
+
 # Function to parse DSL expression into AST
 def parse_dsl(expr):
     # Get the absolute path to 'grammar.lark'
@@ -106,22 +115,22 @@ def main():
 
     if args.examples:
         queries = [
-            ':language eq? Python',
-            ':language eq? "No Language"',
-            ':stars gt? 100',
-            ':asset.type eq? image AND :asset.size gt? 100',
-            ':asset.type eq? image AND (:asset.size gt? 100 OR :asset.size lt? 10)',
-            '(lower-case :owner.name) eq? "alex"',
-            '(path-exists? :asset.amount) OR :language eq? "Python"',
-            '(lower-case :owner.name) eq? "alex" OR ("bitcoin" in? :asset.description AND :asset.amount gt? 1)',
+            ':name eq? "John"',
+            ':user.email exists?',
+            ':language eq? "python" AND :stars gt? 100',
+            '(lower-case :language) eq? "python"',
+            ':items.*.status eq? "completed"',
+            ':data.0.value gt? 50',
+            ':**.error exists?',
+            '(:owner.active eq? true) AND (:stars gt? 100 OR :forks gt? 50)',
         ]
         for q in queries:
             try:
                 ast = parse_dsl(q)
-                print(f"Query: {q}\n")
-                print("--- [AST] ---")
+                print(f"DSL: {q}")
+                print("AST:", end=" ")
                 pprint(ast)
-                print("-------------\n")
+                print()
             except Exception as e:
                 print(f"Failed to parse query: {q}")
                 print(f"Error: {e}\n")

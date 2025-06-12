@@ -19,16 +19,21 @@ class jaf_eval:
     object in the array.
     """
     
+    # Special forms that need custom evaluation logic
+    special_forms = {
+        'path', 'if', 'and', 'or', 'not', 'exists?'
+    }
+    
+    # Regular functions that evaluate all arguments first
     funcs = {
-        # predicates
-        'eq?': wrap(3, lambda x1, x2, obj: x1 == x2),
-        'neq?': wrap(3, lambda x1, x2, obj: x1 != x2),
+        # predicates with strict type checking
+        'eq?': wrap(3, lambda x1, x2, obj: x1 == x2 and type(x1) == type(x2)),
+        'neq?': wrap(3, lambda x1, x2, obj: x1 != x2 or type(x1) != type(x2)),
         'gt?': wrap(3, lambda x1, x2, obj: x1 > x2),
         'gte?': wrap(3, lambda x1, x2, obj: x1 >= x2),
         'lt?': wrap(3, lambda x1, x2, obj: x1 < x2),
         'lte?': wrap(3, lambda x1, x2, obj: x1 <= x2),
         'in?': wrap(3, lambda x1, x2, obj: x1 in x2),
-        'exists?': wrap(2, lambda path, obj: exists(path, obj)),
         'starts-with?': wrap(3, lambda start, value, obj: value.startswith(start)),
         'ends-with?': wrap(3, lambda end, value, obj: value.endswith(end)),
 
@@ -37,29 +42,15 @@ class jaf_eval:
         'close-match?': wrap(3, lambda x1, x2, obj: rapidfuzz.fuzz.ratio(x1, x2) > 80),
         'partial-match?': wrap(3, lambda x1, x2, obj: rapidfuzz.fuzz.partial_ratio(x1, x2) > 80),
 
-        # logical operators
-        'and': (lambda *args, obj: all(args), -1),
-        'or': (lambda *args, obj: any(args), -1),
-        'not': wrap(2, lambda x, obj: not x),
-
-        # functions
-        'path': wrap(2, path_values),
-        'if': wrap(4, lambda cond, true_cond, false_cond, obj: true_cond if cond else false_cond),
+        # value extractors
         'length': wrap(2, lambda x, obj: len(x)),
         'type': wrap(2, lambda x, obj: type(x).__name__),
         'keys': wrap(2, lambda x, obj: list(x.keys())),
-        'sort': wrap(2, lambda x, obj: sorted(x)),
-        'reverse': wrap(2, lambda x, obj: [x[::-1]]),
-        'flatten': wrap(flatten, 2),
-        'unique': wrap(2, lambda x, obj: list(set(x))),
-        'slice': wrap(4, lambda x, start, end, obj: x[start:end]),
-        'index': wrap(3, lambda x, i, obj: x[i]),
-        'list': wrap(-1, lambda *args, obj: list(args)),
 
         # datetime functions
         'now': wrap(1, lambda obj: datetime.datetime.now()),
         'date': wrap(2, lambda x, obj: datetime.datetime.strptime(x, '%Y-%m-%d')),
-        'datetime': wrap(3, lambda x, obj: datetime.datetime.strptime(x, '%Y-%m-%d %H:%M:%S')),
+        'datetime': wrap(2, lambda x, obj: datetime.datetime.strptime(x, '%Y-%m-%d %H:%M:%S')),
         'date-diff': wrap(3, lambda date1, date2, obj: date1 - date2),
         'days': wrap(2, lambda datediff, obj: datediff.days),
         'seconds': wrap(2, lambda datediff, obj: datediff.seconds),
@@ -67,23 +58,6 @@ class jaf_eval:
         # string functions
         'lower-case': wrap(2, lambda s, obj: s.lower()),
         'upper-case': wrap(2, lambda s, obj: s.upper()),
-        'concat': wrap(2, lambda lst, obj: [''.join([str(x) for x in lst])] if isinstance(lst, list) else lst),
-
-        # higher-order functions       
-        'map': wrap(2, lambda lst, func, obj: [func(item, obj) for item in lst]),
-        'filter': wrap(2, lambda lst, func, obj: [item for item in lst if func(item, obj)]),
-        'nth': wrap(2, lambda lst, n, obj: lst[n]),
-
-
-        # math functions
-        'sum': wrap(2, lambda lst, obj: sum(lst)),
-        'max': wrap(2, lambda lst, obj: max(lst)),
-        'min': wrap(2, lambda lst, obj: min(lst)),
-        'abs': wrap(2, lambda x, obj: abs(x)),
-        'round': wrap(2, lambda x, ndigits, obj: round(x, ndigits)),
-        'stddev': wrap(2, lambda lst, obj: statistics.stdev(lst)),
-        'mean': wrap(2, lambda lst, obj: statistics.mean(lst)),
-        'median': wrap(2, lambda lst, obj: statistics.median(lst))
     }
 
     @staticmethod
@@ -95,61 +69,125 @@ class jaf_eval:
         :param obj: The dictionary object to evaluate.
         :return: Result of the evaluation.
         """
-        if not isinstance(query, list) or not query:
-            raise ValueError("Invalid query format.")
-
-        op_query = query[0]
-        if isinstance(op_query, list):
-            logger.debug(f"Operator {op_query} is a sub-query")
-            op = jaf_eval.eval(op_query, obj)
-            logger.debug(f"Operator query: {op}: {type(op)}")
-
-            if not isinstance(op, (str, list)) or not op or (isinstance(op, list) and len(op) != 1):
-                logger.debug(f"Operator query {op} is invalid (does not resolve to a string)")
-                return f"{op_query} not found"
+        # Handle non-list values (literals)
+        if not isinstance(query, list):
+            return query
             
-            if isinstance(op, str):
-                logger.debug(f"Operator query {op} is valid")
-                op = op
-            else:
-                op = op[0]
-
-        else:
-            op = op_query
-            logger.debug(f"Operator is self-evaluating: {op}")
-
-        if op not in jaf_eval.funcs:
-            raise ValueError(f"Unknown operator: {op}")
-
-        logger.debug(f"Evaluating operator: '{op}'")
-
-        func, nargs = jaf_eval.funcs[op]
-        logger.debug(f"Function signature: {func.__code__.co_varnames}, nargs: {nargs}")
-
+        if not query:
+            raise ValueError("Invalid query format.")
+        
+        # Get the operator (first element)
+        op = query[0]
         args = query[1:]
-        logger.debug(f"Unevaluated args: {args}")
-
-        if nargs != -1 and len(args) != nargs-1:
-            logger.error(f"'{op}' expects {nargs} args, got {len(args)}.")
-            raise ValueError(f"'{op}' expects {nargs} args, got {len(args)}.")
-
+        
+        logger.debug(f"Evaluating operator: '{op}' with args: {args}")
+        
+        # Handle special forms first
+        if op in jaf_eval.special_forms:
+            return jaf_eval._eval_special_form(op, args, obj)
+        
+        # Handle regular functions
+        if op in jaf_eval.funcs:
+            return jaf_eval._eval_function(op, args, obj)
+        
+        raise ValueError(f"Unknown operator: {op}")
+    
+    @staticmethod
+    def _eval_special_form(op, args, obj):
+        """Handle special forms that need custom evaluation logic"""
+        
+        if op == 'path':
+            if len(args) != 1:
+                raise ValueError(f"'path' expects 1 argument, got {len(args)}")
+            path_expr = args[0]
+            # path argument should be a list of path components
+            if not isinstance(path_expr, list):
+                raise ValueError("path argument must be a list of path components")
+            return path_values(path_expr, obj)
+        
+        elif op == 'exists?':
+            if len(args) != 1:
+                raise ValueError(f"'exists?' expects 1 argument, got {len(args)}")
+    
+            # The argument should be a path expression like ["path", ["user", "email"]]
+            arg = args[0]
+            if isinstance(arg, list) and len(arg) == 2 and arg[0] == "path":
+                # Extract the path components directly
+                path_components = arg[1]
+                if not isinstance(path_components, list):
+                    raise ValueError("path argument must be a list of path components")
+                return exists(path_components, obj)
+            else:
+                raise ValueError("exists? argument must be a path expression")
+        
+        elif op == 'if':
+            if len(args) != 3:
+                raise ValueError(f"'if' expects 3 arguments, got {len(args)}")
+            cond_expr, true_expr, false_expr = args
+            
+            # Evaluate condition
+            cond_result = jaf_eval.eval(cond_expr, obj)
+            
+            # Return appropriate branch without evaluating the other
+            if cond_result:
+                return jaf_eval.eval(true_expr, obj)
+            else:
+                return jaf_eval.eval(false_expr, obj)
+        
+        elif op == 'and':
+            # Short-circuit evaluation - stop at first falsy value
+            for arg in args:
+                result = jaf_eval.eval(arg, obj)
+                if not result:
+                    return False
+            return True
+        
+        elif op == 'or':
+            # Short-circuit evaluation - stop at first truthy value
+            for arg in args:
+                result = jaf_eval.eval(arg, obj)
+                if result:
+                    return True
+            return False
+        
+        elif op == 'not':
+            if len(args) != 1:
+                raise ValueError(f"'not' expects 1 argument, got {len(args)}")
+            result = jaf_eval.eval(args[0], obj)
+            return not result
+        
+        else:
+            raise ValueError(f"Unknown special form: {op}")
+    
+    @staticmethod
+    def _eval_function(op, args, obj):
+        """Handle regular functions that evaluate all arguments first"""
+        
+        func, nargs = jaf_eval.funcs[op]
+        
+        # Check argument count for non-variadic functions
+        if nargs != -1 and len(args) != nargs - 1:
+            raise ValueError(f"'{op}' expects {nargs-1} arguments, got {len(args)}")
+        
+        # Evaluate all arguments
         eval_args = []
-        logger.debug(f"Evaluating args {args}.")
         for arg in args:
             if isinstance(arg, list):
-                logger.debug(f"Arg {arg} is a sub-query.")
                 val = jaf_eval.eval(arg, obj)
-                logger.debug(f"Evaluated arg: {val}")
                 eval_args.append(val)
             else:
-                logger.debug(f"Arg {arg} is self-evaluating.")
                 eval_args.append(arg)
-
+        
+        # Call the function with type error handling for predicates
         try:
             result = func(*eval_args, obj=obj)
-            logger.debug(f"Result-of '{op}': {result}")
+            logger.debug(f"Result of '{op}': {result}")
+            return result
         except Exception as e:
-            logger.error(f"Error evaluating '{op}' with args {args}: {e}")
-            raise e
-
-        return result
+            logger.debug(f"Error evaluating '{op}' with args {eval_args}: {e}")
+            # For predicates (functions ending with '?'), return False on type errors
+            if op.endswith('?'):
+                return False
+            else:
+                # For non-predicates, re-raise the exception
+                raise e

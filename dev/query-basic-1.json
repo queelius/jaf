@@ -1,1 +1,0 @@
-["not", ["eq?", ["lower-case", ["path", "language"]], "python"]]
