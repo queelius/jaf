@@ -1,211 +1,339 @@
 import itertools
 import logging
-from typing import Any, List, NewType
-
-# Define custom types
-# WildcardResults = NewType('WildcardResults', List[Any]) # Can be kept for type hinting if desired
+import re
+from typing import Any, List
 
 # Actual class for isinstance checks
-class WildcardResultsList(list):
-    """A list subclass to mark results from wildcard path expansions."""
+class PathValues(list): # Renamed from WildcardResultsList
+    """
+    A list subclass used to distinguish results from path evaluations 
+    that might yield multiple values (e.g., from wildcards, slices, or indices).
+    This helps functions like `adapt_jaf_operator` to correctly handle
+    Cartesian products of arguments if necessary.
+    """
     pass
 
 logger = logging.getLogger(__name__)
 
-def path_values(path_components: list, obj: Any):
+def _path_has_multi_match_components(path_components_list: List[List[Any]]) -> bool:
     """
-    Retrieves values from a nested dictionary using a list of path components.
-    
-    :param path_components: List of path components (strings, integers, or wildcards)
-    :param obj: The dictionary object.
-    :return: A single value for non-wildcard paths, 
-             a WildcardResultsList for wildcard paths, 
-             or an empty list if no values found.
+    Internal helper to determine if a path expression's components
+    include operations that inherently imply multiple matches (e.g., wildcards, slices).
     """
-    if not path_components:
-        return obj # Return the object itself if path is empty
+    if not path_components_list:
+        return False
+    for component_list_item in path_components_list:
+        if not isinstance(component_list_item, list) or not component_list_item:
+            # Should not be reached with a correctly formed AST path component
+            continue 
+        op = component_list_item[0]
+        # These operations can lead to multiple results from a single collection
+        if op in ["indices", "slice", "regex_key", "wc_level", "wc_recursive"]:
+            return True
+    return False
+
+def _match_recursive(current_obj: Any, components: List[List[Any]]) -> List[Any]:
+    """
+    Internal recursive engine for `eval_path`.
+    It interprets the path 'components' against the 'current_obj'.
+    Returns a flat list of all resolved values.
+    """
+    # Base Case: Cannot traverse None if path program is not exhausted
+    if current_obj is None and components:
+        return []
+        
+    # Base Case: Path program exhausted, return the current object as a result
+    if not components: 
+        return [current_obj]
+
+    # Fetch current instruction: [op_code, ...op_args]
+    component = components[0]
+    remaining_components = components[1:] # Remainder of the program
+    op = component[0]
+    args = component[1:]
     
-    has_wildcards = any(comp in ['*', '**'] for comp in path_components)
+    collected_values = [] # Aggregates results from successful program executions
+
+    # Dispatch based on operation code (op)
+    if op == "key":
+        if not (args and isinstance(args[0], str)):
+            logger.debug(f"Invalid key argument for 'key' op: {args}")
+            return []
+        key_name = args[0]
+        if isinstance(current_obj, dict) and key_name in current_obj:
+            collected_values.extend(_match_recursive(current_obj[key_name], remaining_components))
     
-    # _match_path is assumed to return a flat list of all matched values.
-    # e.g., path "a.b" to value "v" -> _match_path returns ["v"]
-    # e.g., path "a.*.c" to values "v1", "v2" -> _match_path returns ["v1", "v2"]
-    # e.g., path "a.d" to value [1,2] (a list) -> _match_path returns [[1,2]] if not careful,
-    # but it should ideally return the list itself as an item: [[1,2]] if path is "a.d" and obj.a.d = [1,2]
-    # Let's assume _match_path returns a list of items found at the end of the path.
-    # If the path points to a scalar, it's [scalar]. If it points to a list, it's [list_obj].
+    elif op == "index":
+        if not (args and isinstance(args[0], int)):
+            logger.debug(f"Invalid index argument for 'index' op: {args}")
+            return []
+        idx_val = args[0]
+        if isinstance(current_obj, list):
+            if -len(current_obj) <= idx_val < len(current_obj): # Valid index
+                 collected_values.extend(_match_recursive(current_obj[idx_val], remaining_components))
     
-    def _match_path(cur_obj: Any, parts: List[str]):
-        # ... existing _match_path implementation ...
-        # Ensure _match_path returns a flat list of found terminal values.
-        # If path "x.y" resolves to obj[x][y] = "foo", _match_path returns ["foo"]
-        # If path "x.z" resolves to obj[x][z] = [1,2], _match_path returns [[1,2]]
-        # This was the previous behavior. Let's stick to it.
-        if not parts:
-            return [cur_obj]
+    elif op == "indices":
+        if not (args and isinstance(args[0], list)):
+            logger.debug(f"Invalid indices argument for 'indices' op: {args}")
+            return []
+        idx_list = args[0]
+        if isinstance(current_obj, list):
+            for idx_val in idx_list:
+                if isinstance(idx_val, int) and -len(current_obj) <= idx_val < len(current_obj):
+                    collected_values.extend(_match_recursive(current_obj[idx_val], remaining_components))
+    
+    elif op == "slice":
+        if not (2 <= len(args) <= 3):
+            logger.debug(f"Invalid number of arguments for 'slice' op: {args}")
+            return []
 
-        part = parts[0]
+        start = args[0]
+        stop = args[1]
+        step = args[2] if len(args) > 2 else None # step can be None from AST
+        if step is None: step = 1 # Default step to 1 if None or not provided
 
-        if part == '**':
-            results = []
-            results.extend(_match_path(cur_obj, parts[1:])) # Match zero levels
-            if isinstance(cur_obj, dict):
-                for v in cur_obj.values():
-                    results.extend(_match_path(v, parts))
-            elif isinstance(cur_obj, list):
-                for item in cur_obj:
-                    results.extend(_match_path(item, parts))
-            # Deduplicate results for '**' to avoid excessive processing if paths overlap
-            # This might be complex; for now, assume raw results are fine.
-            # A simple deduplication for hashable items:
-            # unique_results = []
-            # seen = set()
-            # for r in results:
-            #    try:
-            #        if r not in seen: # This check is slow for unhashable items
-            #            unique_results.append(r)
-            #            seen.add(r)
-            #    except TypeError: # Unhashable item
-            #        if r not in unique_results: # Slower check
-            #             unique_results.append(r)
-            # return unique_results
-            return results
+        if not (isinstance(step, int) and step > 0):
+            logger.debug(f"Slice step must be a positive integer, got: {step}")
+            return []
+        if not (start is None or isinstance(start, int)):
+            logger.debug(f"Slice start must be an integer or null, got: {start}")
+            return []
+        if not (stop is None or isinstance(stop, int)):
+            logger.debug(f"Slice stop must be an integer or null, got: {stop}")
+            return []
 
-
-        elif part == '*':
-            results = []
-            if isinstance(cur_obj, dict):
-                for v in cur_obj.values():
-                    results.extend(_match_path(v, parts[1:]))
-            elif isinstance(cur_obj, list):
-                for item in cur_obj:
-                    results.extend(_match_path(item, parts[1:]))
-            return results
-        else:
-            results = []
-            if isinstance(cur_obj, dict) and part in cur_obj:
-                results.extend(_match_path(cur_obj[part], parts[1:]))
-            elif isinstance(cur_obj, list) and isinstance(part, int) and 0 <= part < len(cur_obj):
-                results.extend(_match_path(cur_obj[part], parts[1:]))
-            return results
-
-    matched_values = _match_path(obj, path_components)
-
-    if has_wildcards:
-        # For wildcard paths, always return a WildcardResultsList,
-        # even if it's empty.
-        return WildcardResultsList(matched_values)
+        if isinstance(current_obj, list):
+            try:
+                s = slice(start, stop, step)
+                sliced_items = current_obj[s]
+                for item in sliced_items:
+                    collected_values.extend(_match_recursive(item, remaining_components))
+            except (TypeError, ValueError) as e:
+                logger.debug(f"Error during slicing for {current_obj} with {s}: {e}")
+                
+    elif op == "regex_key":
+        if not (args and isinstance(args[0], str)):
+            logger.debug(f"Invalid pattern argument for 'regex_key' op: {args}")
+            return []
+        pattern_str = args[0]
+        try:
+            regex = re.compile(pattern_str)
+            if isinstance(current_obj, dict):
+                for k, v_obj in current_obj.items():
+                    if regex.match(k):
+                        collected_values.extend(_match_recursive(v_obj, remaining_components))
+        except re.error:
+            logger.debug(f"Invalid regex pattern in path component: {pattern_str}")
+            
+    elif op == "wc_level": # '*' functionality
+        if isinstance(current_obj, dict):
+            for v_obj in current_obj.values():
+                collected_values.extend(_match_recursive(v_obj, remaining_components))
+        elif isinstance(current_obj, list):
+            for item in current_obj:
+                collected_values.extend(_match_recursive(item, remaining_components))
+                
+    elif op == "wc_recursive": # '**' functionality
+        # 1. Attempt to match remaining_components starting from current_obj.
+        collected_values.extend(_match_recursive(current_obj, remaining_components))
+        
+        # 2. Recursively apply this ["wc_recursive"] op (and remaining_components)
+        #    to all children.
+        current_recursive_op_and_remainder = [component] + remaining_components
+        if isinstance(current_obj, dict):
+            for v_obj in current_obj.values():
+                collected_values.extend(_match_recursive(v_obj, current_recursive_op_and_remainder))
+        elif isinstance(current_obj, list):
+            for item in current_obj:
+                collected_values.extend(_match_recursive(item, current_recursive_op_and_remainder))
     else:
-        # For non-wildcard paths:
-        if not matched_values:
-            return [] # Return a plain empty list if no match
-        # Otherwise, _match_path returns a list containing a single element: the actual value.
-        return matched_values[0]
+        logger.warning(f"Unknown path operation code encountered: {op}")
 
-def exists(path, obj):
+    return collected_values
+
+def eval_path(path_components_list: List[List[Any]], obj: Any) -> Any:
     """
-    Checks if the path exists in the object.
-    For wildcard paths, checks if there's at least one match.
+    Evaluates a path expression against an object and retrieves values.
+
+    The path_components_list is a list of lists, where each inner list
+    defines a path segment (e.g., [["key", "name"], ["index", 0]]).
+
+    Returns:
+    - The direct value if the path is specific and resolves to a single item.
+    - An empty list `[]` if a specific path resolves to no items.
+    - A `PathValues` list if the path involves multi-match components 
+      (like wildcards or slices) or if a specific-looking path resolves to 
+      multiple distinct items due to data structure (e.g., path `a.b` on `{"a": [{"b":1}, {"b":2}]}`).
+    - The original object `obj` if `path_components_list` is empty.
+    """
+    if not path_components_list: # Handles an empty path like ["path", []]
+        return obj
+
+    matched_values = _match_recursive(obj, path_components_list)
+
+    is_specific_path_intent = not _path_has_multi_match_components(path_components_list)
+
+    if is_specific_path_intent:
+        if not matched_values:
+            return [] 
+        elif len(matched_values) == 1:
+            return matched_values[0]
+        else:
+            # A path with specific-intent components yielded multiple results.
+            # This occurs if a path like `a.b` is applied to `{"a": [{"b":1}, {"b":2}]}`.
+            # The results `[1, 2]` should be treated as a collection.
+            logger.debug(
+                f"Path with specific-intent components yielded {len(matched_values)} results. "
+                f"Path: {path_components_list}. Wrapping in PathValues."
+            )
+            return PathValues(matched_values)
+    else:
+        # Path had multi-match components, or a specific path unexpectedly yielded multiple values.
+        return PathValues(matched_values)
+
+def exists(path_components_list: List[List[Any]], obj: Any) -> bool:
+    """
+    Checks if the given path expression resolves to any value(s) in the object,
+    including a literal `None` (null) value at the end of the path.
+    Returns `False` only if the path does not lead to any data segment.
     """
     try:
-        values = path_values(path, obj)
-        if isinstance(values, list):
-            return len(values) > 0
-        else:
-            return values is not None
-    except:
-        return False
+        resolved_value = eval_path(path_components_list, obj)
+
+        if isinstance(resolved_value, PathValues):
+            return len(resolved_value) > 0
+        elif isinstance(resolved_value, list) and not resolved_value: 
+            # This specific return `[]` from eval_path means a specific path found nothing.
+            return False
+        # All other cases mean the path resolved to something:
+        # - A single scalar value (str, int, bool, None)
+        # - A single data structure (dict, or a list that is actual data, not the empty `[]` marker)
+        return True 
+    except Exception: 
+        logger.debug(f"Exception during 'exists' check for path {path_components_list}", exc_info=True)
+        return False # Path evaluation failed, so it effectively doesn't exist in a usable way.
     
-def wrap(n, func):
+def adapt_jaf_operator(n: int, func: callable) -> tuple[callable, int]:
     """
-    A generic wrapper that handles functions with varying numbers of arguments.
-    The function is expected to take `n` arguments, where `n` can be -1 for variable arguments.
-    If arguments include WildcardResultsList, it expands them using Cartesian product.
-    It then tests if all evaluations are booleans and return True if any of them are True,
-    or False if all of them are False. If the results are not all booleans, it will return a list of results.
+    Adapts a Python function to serve as a JAF operator.
 
-    :param n: Number of expected arguments (including obj).
-    :param func: The function to wrap.
-    :return: Wrapped function.
+    The wrapper handles:
+    1. Argument Count Validation: Checks if the correct number of evaluated
+       arguments (excluding the `obj` context) are passed.
+    2. `PathValues` Expansion: If any arguments are `PathValues` instances
+       (results of multi-value path evaluations), it computes the Cartesian 
+       product of these arguments. Non-`PathValues` arguments are treated as
+       single-element lists for this product. The underlying `func` is then
+       called for each combination.
+    3. Result Aggregation for Predicates: If all results from all combinations
+       (or the single call) are boolean, it performs an 'any' aggregation
+       (True if any result is True). These are typically functions ending with '?'.
+    4. Result Handling for Value Extractors/Transformers:
+       - If one `PathValues` argument was empty, an empty list `[]` is returned.
+       - If a single value results, it's returned directly.
+       - If a single list-of-lists like `[[data]]` results, it's flattened to `[data]`.
+       - Otherwise, a list of all results from combinations is returned.
+    5. Error Handling: Type/Attribute errors within `func` for a specific
+       combination cause that combination to yield `False` if `func` is a
+       predicate; otherwise, the error propagates, and the wrapper returns `False`.
+
+    :param n: Number of expected arguments for `func` as defined in JAF 
+              (e.g., for `["eq?", arg1, arg2]`, n=3 including `obj`).
+              Use -1 for variadic functions (not currently standard in JAF ops).
+    :param func: The Python function to adapt.
+    :return: A tuple containing the wrapped function and `n`.
     """
-    def wrapper(*args, obj):
+    def wrapper(*args, obj): # These `args` are already evaluated by jaf_eval
         try:
-            if n != -1 and len(args) != n - 1: # n includes obj, args doesn't
-                logger.debug(f"[wrap_func] Args: {args}, expected {n-1} data args, got {len(args)}.") 
-                raise ValueError(f"Unexpected number of arguments for function {func.__name__ if hasattr(func, '__name__') else 'lambda'}. Expected {n-1}, got {len(args)}.")
+            # `n` includes `obj`, but `obj` is passed as a keyword arg to `wrapper`
+            # So, `args` here are the data arguments for `func`.
+            expected_data_args = n -1 if n != -1 else -1 # -1 if func is variadic
+            
+            if expected_data_args != -1 and len(args) != expected_data_args:
+                func_name = func.__name__ if hasattr(func, '__name__') else 'lambda'
+                logger.debug(f"[{func_name}] Args: {args}, expected {expected_data_args} data args, got {len(args)}.") 
+                raise ValueError(f"Incorrect arg count for {func_name}. Expected {expected_data_args}, got {len(args)}.")
 
-            if hasattr(func, '__name__') or 'length' in str(func):
-                print(f"DEBUG WRAP: Function called with args: {args}, obj keys: {list(obj.keys()) if isinstance(obj, dict) else 'not dict'}")
+            # DEBUG: print(f"DEBUG ADAPT_JAF_OPERATOR: Func {func.__name__ if hasattr(func, '__name__') else 'lambda'} called with args: {args}, obj keys: {list(obj.keys()) if isinstance(obj, dict) else 'not dict'}")
 
-            wildcard_arg_indices = [i for i, arg_val in enumerate(args) if isinstance(arg_val, WildcardResultsList)]
+            path_values_arg_indices = [i for i, arg_val in enumerate(args) if isinstance(arg_val, PathValues)]
             
             evaluated_results = []
 
-            if not wildcard_arg_indices:
-                evaluated_results.append(func(*args, obj))
-            else:
+            if not path_values_arg_indices: # No PathValues, direct call
+                evaluated_results.append(func(*args, obj=obj))
+            else: # One or more PathValues arguments, use Cartesian product
                 iterables_for_product = []
-                has_empty_wildcard_list = False
+                has_empty_path_values = False
                 for i, arg_val in enumerate(args):
-                    if i in wildcard_arg_indices: # isinstance(arg_val, WildcardResultsList)
-                        if not arg_val: # Empty WildcardResultsList
-                            has_empty_wildcard_list = True
+                    if i in path_values_arg_indices: # This arg is a PathValues instance
+                        if not arg_val: # This PathValues is empty
+                            has_empty_path_values = True
                             break
                         iterables_for_product.append(arg_val)
-                    else:
-                        iterables_for_product.append([arg_val]) # Wrap non-wildcard args for product
+                    else: # Regular argument
+                        iterables_for_product.append([arg_val]) # Wrap for product
 
-                if has_empty_wildcard_list:
-                    # If any wildcard list is empty, the product is empty.
-                    # For predicates, this means False. For others, an empty list.
+                if has_empty_path_values:
+                    # If any PathValues arg is empty, the product is empty.
+                    # For predicates (existential), this means False.
+                    # For value extractors, this means no values produced, so [].
                     if hasattr(func, '__name__') and func.__name__.endswith('?'):
                         return False 
                     else:
-                        evaluated_results = [] # Will result in returning [] later
+                        # evaluated_results remains empty, will return [] later
+                        pass
                 else:
                     for combo in itertools.product(*iterables_for_product):
                         try:
-                            res = func(*combo, obj=obj)
+                            res = func(*combo, obj=obj) # Pass obj explicitly
                             evaluated_results.append(res)
-                        except (TypeError, AttributeError): # Error within a specific combination
+                        except (TypeError, AttributeError): 
+                            # Error within a specific combination for the underlying func
                             if hasattr(func, '__name__') and func.__name__.endswith('?'):
                                 evaluated_results.append(False) # Predicate combo error -> False for that combo
                             else:
-                                raise # Re-raise for non-predicates, to be caught by outer handler
+                                # For non-predicates, re-raise to be caught by the outer handler of this wrapper
+                                raise 
+            
+            # logger.debug(f"[{func.__name__ if hasattr(func, '__name__') else 'lambda'}] Raw results: {evaluated_results}")
 
-            if hasattr(func, '__name__') or 'length' in str(func):
-                print(f"DEBUG WRAP: Evaluated results: {evaluated_results}")
-            logger.debug(f"[wrap_func] Evaluated results: {evaluated_results}")
-
-            if not evaluated_results: # Can happen if has_empty_wildcard_list was true for non-predicate
+            if not evaluated_results: # Can happen if has_empty_path_values was true for non-predicate
                 return []
 
+            # Check if all results are boolean (typical for predicates)
             is_predicate_like = all(isinstance(x, bool) for x in evaluated_results)
             if is_predicate_like:
-                aggregated_result = any(evaluated_results)
-                logger.debug(f"[wrap_func] Aggregated Boolean Result: {aggregated_result}")
+                aggregated_result = any(evaluated_results) # Existential quantifier
+                # logger.debug(f"[{func.__name__ if hasattr(func, '__name__') else 'lambda'}] Aggregated Boolean: {aggregated_result}")
                 return aggregated_result
 
+            # Handle results for value extractors/transformers
             if len(evaluated_results) == 1:
                 single_result = evaluated_results[0]
                 # Flatten if it's a list containing a single list (e.g., [[data]] -> [data])
-                # but not if it's a WildcardResultsList itself that needs to be returned as is (though unlikely here)
-                if isinstance(single_result, list) and len(single_result) == 1 and isinstance(single_result[0], list):
-                     # Check that it's not a WildcardResultsList that should remain wrapped,
-                     # though wrap usually returns plain lists or scalars.
-                     # This specific flattening is usually for non-wildcard paths returning [[data]].
+                # This is mainly for functions that might return lists, and no PathValues expansion happened.
+                if isinstance(single_result, list) and \
+                   len(single_result) == 1 and \
+                   isinstance(single_result[0], list) and \
+                   not isinstance(single_result, PathValues): # Don't unwrap PathValues itself
                     return single_result[0]
                 return single_result
 
-            return evaluated_results
+            return evaluated_results # Return list of results for non-predicates with multiple results
 
         except (TypeError, AttributeError) as e:
-            logger.debug(f"[wrap_func] Type/Attribute error in wrapper: {e}, args: {args}")
-            print(f"DEBUG WRAP: Type/Attribute error caught in wrapper: {e}, args: {args}")
-            return False # Consistent with existing behavior for overall errors
+            # Catches errors from non-PathValues calls, or re-raised from PathValues combo for non-predicates
+            func_name = func.__name__ if hasattr(func, '__name__') else 'lambda'
+            logger.debug(f"[{func_name}] Type/Attribute error in adapted operator: {e}, for args: {args}")
+            # For filtering, a False return on type error is a safe default.
+            return False 
+        except ValueError as e: # Catch arg count errors specifically
+            logger.debug(f"ValueError in adapted operator: {e}")
+            return False # Or re-raise if preferred: raise
         except Exception as e:
-            logger.error(f"Error evaluating function in wrapper: {e}")
-            raise e
+            func_name = func.__name__ if hasattr(func, '__name__') else 'lambda'
+            logger.error(f"Unexpected error in adapted operator [{func_name}]: {e}", exc_info=True)
+            raise # Re-raise unexpected errors
     
     return (wrapper, n)
-
