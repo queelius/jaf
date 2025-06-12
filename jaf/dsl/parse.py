@@ -1,31 +1,22 @@
 #!/usr/bin/env python3
 """
-parse.py – Compile a JAF-DSL expression into an AST
-• LALR parser, C-style function calls only
-• Wild-cards in paths (*, **), numeric indices, hyphenated identifiers
-• CLI: --examples  --json
+parse.py – JAF DSL → AST compiler
+• Recognises prefix special forms (if, and, or, not)
+• Infix AND / OR / NOT still work
+• Wild-cards, numeric indices, double-star
 """
 
-import os
-import argparse
-import json
+import os, json, argparse
 from pprint import pprint
 from lark import Lark, Transformer, Token
 
-
-# ────────────────────────────────────────────────────────────
-# Transformer
-# ────────────────────────────────────────────────────────────
+# ───────────────────────────────────────── Transformer ─────
 class DSLTransformer(Transformer):
-    # Entry helpers -----------------------------------------------------------
-    def start(self, items):
-        return items[0]
+    # entry
+    def start(self, items): return items[0]
+    def expr(self, items):  return items[0]
 
-    def expr(self, items):
-        return items[0]
-
-    # Boolean logic -----------------------------------------------------------
-    # items = [lhs, OR/AND token, rhs]   ← the middle token is ignored
+    # infix boolean
     def or_operation(self, items):
         left, _, right = items
         return ["or", left, right]
@@ -37,7 +28,12 @@ class DSLTransformer(Transformer):
     def not_operation(self, items):
         return ["not", items[0]]
 
-    # Comparisons / exists ----------------------------------------------------
+    # prefix special forms  if(), and(), or(), not()
+    def special_form(self, items):
+        name_token, *args = items
+        return [str(name_token)] + args
+
+    # comparison & exists?
     def condition(self, items):
         left, op_tok, right = items
         return [str(op_tok), left, right]
@@ -45,79 +41,69 @@ class DSLTransformer(Transformer):
     def unary_exists_expr(self, items):
         return ["exists?", items[0]]
 
-    # Function call -----------------------------------------------------------
+    # function call
     def function_call(self, items):
         fname = str(items[0])
         return [fname] + items[1:]
+    
 
-    # Path handling -----------------------------------------------------------
+
+    # path components
     def path_component(self, items):
-        token_or_val = items[0]
-        if isinstance(token_or_val, Token):
-            t = token_or_val
-            if t.type == "STAR":
-                return "*"
-            if t.type == "DOUBLESTAR":
-                return "**"
-            if t.type == "INT":
-                return int(t.value)
-            raise ValueError(f"Unexpected token {t.type} in path_component")
-        return token_or_val  # identifier string
+        x = items[0]
+        if isinstance(x, Token):
+            if x.type == "STAR":         return "*"
+            if x.type == "DOUBLESTAR":   return "**"
+            if x.type == "INT":          return int(x.value)
+        return x
 
     def path(self, items):
         out = []
-        for c in items:
-            if c == "*":
-                out.append(["wc_level"])
-            elif c == "**":
-                out.append(["wc_recursive"])
-            elif isinstance(c, int):
-                out.append(["index", c])
-            else:  # identifier
-                out.append(["key", c])
+        for comp in items:
+            if comp == "*":   out.append(["wc_level"])
+            elif comp == "**":out.append(["wc_recursive"])
+            elif isinstance(comp, int):
+                out.append(["index", comp])
+            else:             out.append(["key", comp])
         return ["path", out]
 
-    # Primitive literals ------------------------------------------------------
-    def value(self, items):
-        return items[0]
 
-    def BOOLEAN(self, tok):
-        return tok.value == "true"
-
-    def SIGNED_NUMBER(self, tok):
-        try:
-            return int(tok.value)
-        except ValueError:
-            return float(tok.value)
-
-    def IDENTIFIER(self, tok):
-        return tok.value
-
-    def ESCAPED_STRING(self, tok):
-        s = tok.value[1:-1]  # strip quotes
-        return s.replace(r'\"', '"').replace(r"\\", "\\")
-
-    def __default_token__(self, tok):
-        return None if tok.value == "null" else tok.value
+    # Handle path as boolean evaluation
+    def eval_path_directly_as_boolean(self, items):
+        # When a path is used directly as a boolean expression (like in :user.email)
+        # we can either return the path directly, or wrap it in an exists? check
+        # For now, let's return the path directly and let the evaluator decide
+        # how to handle it in boolean context
+        return items[0]  # items[0] is the transformed path AST
 
 
-# ────────────────────────────────────────────────────────────
-# Parser wrapper
-# ────────────────────────────────────────────────────────────
-def _get_parser() -> Lark:
-    grammar_path = os.path.join(os.path.dirname(__file__), "grammar.lark")
-    return Lark.open(grammar_path, parser="lalr", start="start", maybe_placeholders=False)
+    # literals
+    def INT(self, t): return int(t.value)
+    def BOOLEAN(self, t):      return t.value == "true"
+    def SIGNED_NUMBER(self, t):
+        try: return int(t.value)
+        except ValueError: return float(t.value)
+    def ESCAPED_STRING(self, t):
+        return t.value[1:-1].encode('utf-8').decode('unicode_escape')
+    def IDENTIFIER(self, t):   return t.value
+    def __default_token__(self, t):
+        return None if t.value == "null" else t.value
 
+# ──────────────────────────────────────── Parser helper ────
+def _parser() -> Lark:
+    here = os.path.dirname(__file__)
+    return Lark.open(
+        os.path.join(here, "grammar.lark"),
+        parser="lalr",
+        start="start",
+        maybe_placeholders=False,
+    )
 
 def parse_dsl(text: str):
-    parser = _get_parser()
-    tree = parser.parse(text)
+    tree = _parser().parse(text)
     return DSLTransformer().transform(tree)
 
-
-# ────────────────────────────────────────────────────────────
-# CLI helper
-# ────────────────────────────────────────────────────────────
+# ───────────────────────────────────────── CLI / examples ──
 EXAMPLES = [
     ':name eq? "John"',
     ":user.email exists?",
@@ -126,46 +112,40 @@ EXAMPLES = [
     ':items.*.status eq? "completed"',
     ":data.0.value gt? 50",
     ":**.error exists?",
-    "(:owner.active eq? true) AND (:stars gt? 100 OR :forks gt? 50)",
+    '(:owner.active eq? true) AND (:stars gt? 100 OR :forks gt? 50)',
+    'if(:active, "yes", "no")',                 # new special form
 ]
 
-
-def _run_examples(as_json=False):
-    print("JAF DSL to AST Examples:\n")
+def run_examples(as_json=False):
+    print("JAF DSL → AST examples\n")
     for i, q in enumerate(EXAMPLES, 1):
         try:
             ast = parse_dsl(q)
-            print(f"#{i}. DSL: {q}")
-            if as_json:
-                print(json.dumps(ast, indent=2))
-            else:
-                print(f"   {ast!r}")
+            print(f"#{i}. {q}")
+            print(json.dumps(ast, indent=2) if as_json else ast)
         except Exception as e:
-            print(f"Failed to parse query: {q}\nError: {e}")
+            print(f"#{i}. FAILED  {q}\n   {e}")
         print("-" * 40)
 
-
 def main():
-    ap = argparse.ArgumentParser(description="Compile a JAF DSL expression into its AST.")
-    ap.add_argument("dsl_expression", nargs="?", help="DSL expression to parse (omit for --examples).")
-    ap.add_argument("--examples", action="store_true", help="Show built-in example queries.")
-    ap.add_argument("--json", action="store_true", help="Output AST in JSON.")
-
+    ap = argparse.ArgumentParser("JAF DSL compiler")
+    ap.add_argument("expr", nargs="?", help="DSL string")
+    ap.add_argument("--examples", action="store_true")
+    ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
+
     if args.examples:
-        _run_examples(args.json)
+        run_examples(args.json)
         return
 
-    if not args.dsl_expression:
-        ap.print_help()
-        return
+    if not args.expr:
+        ap.print_help(); return
 
     try:
-        ast = parse_dsl(args.dsl_expression)
+        ast = parse_dsl(args.expr)
         print(json.dumps(ast, indent=2) if args.json else pprint(ast))
     except Exception as e:
-        print(f"Failed to parse: {args.dsl_expression}\nError: {e}")
-
+        print("Error:", e)
 
 if __name__ == "__main__":
     main()
