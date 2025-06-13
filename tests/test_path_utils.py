@@ -1,5 +1,5 @@
 import unittest
-from jaf.path_utils import path_ast_to_string
+from jaf.path_utils import path_ast_to_string, PathSyntaxError
 
 class TestPathAstToString(unittest.TestCase):
 
@@ -76,3 +76,4 @@ class TestPathAstToString(unittest.TestCase):
     
     def test_slice_at_start(self):
         self.assertEqual(path_ast_to_string([["slice", 0,1,None]]), "[0:1]")
+

@@ -24,8 +24,8 @@ _JAF_PATH_GRAMMAR = r"""
     RECURSIVE_WC_TOKEN: "**"
     DOT_RECURSIVE_WC_TOKEN: ".**"
     
-    SLICE_CONTENT: /[^\]]*/ /* Matches anything inside slice brackets */
-    REGEX_BODY: /([^\/]|\\\/)*/ /* Matches regex body, allowing escaped slashes */
+    SLICE_CONTENT: /[^]]*/
+    REGEX_BODY: /([^\/]|\\\/)*/
 
     %import common.SIGNED_INT
     %import common.WS
@@ -40,18 +40,14 @@ class _PathAstTransformer(Transformer):
         return ["key", token_list[0].value]
 
     def DOT_IDENTIFIER_TOKEN(self, token_list: List[Token]) -> List[Any]:
-        # token_list[0] is DOT, token_list[1] is IDENTIFIER_TOKEN
         return ["key", token_list[1].value] 
 
     def INDEX_TOKEN(self, token_list: List[Token]) -> List[Any]:
-        # token_list = [LBRACKET_TOKEN, SIGNED_INT_val, RBRACKET_TOKEN]
         return ["index", token_list[1]] 
 
     def INDICES_TOKEN(self, token_list: List[Token]) -> List[Any]:
-        # For terminal INDICES_TOKEN: "[" SIGNED_INT ("," SIGNED_INT)* "]"
-        # The token_list[0].value will be the full string like "[1,2,3]"
         content = token_list[0].value[1:-1] 
-        if not content: # Should not happen if grammar requires at least one SIGNED_INT
+        if not content: 
              raise ValueError("Indices content cannot be empty.")
         return ["indices", [int(x.strip()) for x in content.split(',')]]
 
@@ -70,7 +66,7 @@ class _PathAstTransformer(Transformer):
         
         parts = content.split(':', 2)
 
-        if content.count(':') == 0: # e.g. "[abc]" or "[1]" - should not be SLICE_TOKEN
+        if content.count(':') == 0:
             raise ValueError(f"Invalid slice content '{content}'. Slice must contain ':'.")
 
         if parts[0]:
@@ -85,7 +81,7 @@ class _PathAstTransformer(Transformer):
         return ["slice", start, stop, step]
 
     def REGEX_KEY_TOKEN(self, token_list: List[Token]) -> List[Any]:
-        body = token_list[0].value[2:-1] # Remove "~/" and "/"
+        body = token_list[0].value[2:-1]
         return ["regex_key", body]
 
     def LEVEL_WC_TOKEN(self, token_list: List[Token]) -> List[Any]:
@@ -98,10 +94,6 @@ class _PathAstTransformer(Transformer):
         return ["wc_recursive"]
 
     def start(self, children: List[List[Any]]) -> List[List[Any]]:
-        # Correct the first key if it was parsed by DOT_IDENTIFIER_TOKEN (e.g. path ".foo")
-        # This case should ideally be handled by grammar disallowing leading dot for first identifier
-        # or by ensuring IDENTIFIER_TOKEN is tried first for non-dotted identifiers.
-        # The current grammar structure with path_element* and distinct token types handles this.
         return children
 
 _path_parser = Lark(_JAF_PATH_GRAMMAR, parser='lalr', transformer=_PathAstTransformer())
@@ -109,16 +101,11 @@ _path_parser = Lark(_JAF_PATH_GRAMMAR, parser='lalr', transformer=_PathAstTransf
 def path_string_to_ast(path_str: str) -> List[List[Any]]:
     """
     Converts a JAF path string representation into its AST (list of components).
-
-    Example:
-        "user[0].name" -> [["key", "user"], ["index", 0], ["key", "name"]]
-        "**.id" -> [["wc_recursive"], ["key", "id"]]
     """
     if not path_str.strip():
         return []
     try:
-        # The transformer's `start` method will return the list of components directly.
         ast_components = _path_parser.parse(path_str)
         return ast_components
-    except Exception as e: # Catch Lark specific errors for better messages if needed
+    except Exception as e:
         raise ValueError(f"Invalid JAF path string: '{path_str}'. Error: {e}")

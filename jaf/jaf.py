@@ -1,6 +1,5 @@
 from typing import List, Dict, Any, Union
 import logging
-from .jaf_eval import jaf_eval
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +21,8 @@ def jaf(data: List[Dict], query: Union[List, str]) -> List[int]:
     Raises:
         jafError: If query is invalid or evaluation fails.
     """
+    from .jaf_eval import jaf_eval
+
     if not query:
         raise jafError("No query provided.")
 

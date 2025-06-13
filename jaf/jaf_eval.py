@@ -2,7 +2,8 @@ import datetime
 import re
 import rapidfuzz
 import logging
-from .utils import exists, eval_path, adapt_jaf_operator
+from .path_utils import exists, eval_path, PathValues
+from .utils import adapt_jaf_operator
 
 # Set up the logger
 logger = logging.getLogger(__name__)

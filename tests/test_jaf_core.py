@@ -3,7 +3,7 @@ Core JAF functionality tests.
 Tests the main jaf() function and basic filtering.
 """
 import pytest
-from jaf import jaf, jafError
+from jaf.jaf import jaf, jafError
 
 
 class TestJAFCore:

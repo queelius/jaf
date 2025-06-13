@@ -2,8 +2,8 @@
 Tests for JAF path system and wildcard functionality.
 """
 import pytest
-from jaf.jaf_eval import jaf_eval
-from jaf.utils import eval_path, exists, PathValues # Updated import
+from jaf.jaf_eval import jaf_eval # Corrected import for jaf_eval
+from jaf.path_utils import eval_path, exists, PathValues
 
 
 class TestPathSystem:
