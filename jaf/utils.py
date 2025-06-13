@@ -83,33 +83,41 @@ def _match_recursive(current_obj: Any, components: List[List[Any]]) -> List[Any]
                     collected_values.extend(_match_recursive(current_obj[idx_val], remaining_components))
     
     elif op == "slice":
-        if not (2 <= len(args) <= 3):
-            logger.debug(f"Invalid number of arguments for 'slice' op: {args}")
+        # Expects AST:
+        # ["slice", start_val_or_None]
+        # ["slice", start_val_or_None, stop_val_or_None]
+        # ["slice", start_val_or_None, stop_val_or_None, step_val_or_None]
+        if not (1 <= len(args) <= 3):
+            logger.debug(f"Slice AST component requires 1 to 3 arguments, got {len(args)}: {args}")
             return []
 
-        start = args[0]
-        stop = args[1]
-        step = args[2] if len(args) > 2 else None # step can be None from AST
-        if step is None: step = 1 # Default step to 1 if None or not provided
+        start_val = args[0]
+        stop_val = args[1] if len(args) > 1 else None
+        step_val = args[2] if len(args) > 2 else None
 
-        if not (isinstance(step, int) and step > 0):
-            logger.debug(f"Slice step must be a positive integer, got: {step}")
+        # Default step to 1 if not provided or explicitly None
+        actual_step = step_val if step_val is not None else 1
+
+        # Validate argument types and values
+        if not (start_val is None or isinstance(start_val, int)):
+            logger.debug(f"Slice start must be an integer or null, got: {start_val}")
             return []
-        if not (start is None or isinstance(start, int)):
-            logger.debug(f"Slice start must be an integer or null, got: {start}")
+        if not (stop_val is None or isinstance(stop_val, int)): # None is valid for Python's slice
+            logger.debug(f"Slice stop must be an integer or null, got: {stop_val}")
             return []
-        if not (stop is None or isinstance(stop, int)):
-            logger.debug(f"Slice stop must be an integer or null, got: {stop}")
+        if not (isinstance(actual_step, int) and actual_step != 0): # Step cannot be 0
+            logger.debug(f"Slice step must be a non-zero integer, got: {actual_step} (from AST value: {step_val})")
             return []
 
         if isinstance(current_obj, list):
             try:
-                s = slice(start, stop, step)
+                # Python's slice object handles None for start and stop correctly.
+                s = slice(start_val, stop_val, actual_step)
                 sliced_items = current_obj[s]
                 for item in sliced_items:
                     collected_values.extend(_match_recursive(item, remaining_components))
             except (TypeError, ValueError) as e:
-                logger.debug(f"Error during slicing for {current_obj} with {s}: {e}")
+                logger.debug(f"Error during slicing for {current_obj} with slice({start_val},{stop_val},{actual_step}): {e}")
                 
     elif op == "regex_key":
         if not (args and isinstance(args[0], str)):

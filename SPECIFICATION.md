@@ -51,10 +51,17 @@ Each component in the `path_components_list` is a list itself, where the first e
     *   Returns a list of values found at these indices.
     *   Example: `[["key", "tags"], ["indices", [0, 2, 4]]]` accesses `obj["tags"][0]`, `obj["tags"][2]`, and `obj["tags"][4]`.
 
-4.  `["slice", <start_n_or_null>, <stop_n_or_null>, <step_n_or_null>]`
-    *   Accesses a slice of an array. `start_n`, `stop_n`, and `step_n` behave like Python\'s slice arguments (all are optional integers; `null` can be used for defaults, e.g., `null` for `start` means from the beginning, `null` for `stop` means till the end, `null` for `step` means `1`).
-    *   Example: `[["key", "data"], ["slice", 0, 10, 2]]` accesses elements from index 0 up to (but not including) 10, with a step of 2.
-    *   `[["key", "data"], ["slice", null, 5, null]]` accesses elements from the beginning up to index 5 with a step of 1.
+4.  `["slice", <start_val_or_null> [, <stop_val_or_null> [, <step_val_or_null>]]]`
+    *   Accesses a slice of an array. The AST component will have 1, 2, or 3 values after the "slice" tag, corresponding to `start`, `stop`, and `step`.
+    *   `start_val_or_null`: The starting index. If `null` or omitted, defaults to the beginning of the array.
+    *   `stop_val_or_null`: The ending index (exclusive). If `null` or omitted, defaults to the end of the array.
+    *   `step_val_or_null`: The step value. If `null` or omitted, defaults to `1`. A step of `0` is invalid.
+    *   Example ASTs:
+        *   `[["slice", 0, 10, 2]]` (explicit start, stop, step)
+        *   `[["slice", null, 5]]` (start from beginning, up to 5, step 1) -> equivalent to `[["slice", null, 5, null]]` for evaluation
+        *   `[["slice", 2]]` (start from 2, to end, step 1) -> equivalent to `[["slice", 2, null, null]]` for evaluation
+    *   Example from query: `[["key", "data"], ["slice", 0, 10, 2]]` accesses elements from index 0 up to (but not including) 10, with a step of 2.
+    *   `[["key", "data"], ["slice", null, 5]]` accesses elements from the beginning up to index 5 with a default step of 1.
 
 5.  `["regex_key", <pattern_string>]`
     *   Accesses object properties where keys match the given regular expression pattern.

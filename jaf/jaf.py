@@ -1,7 +1,6 @@
 from typing import List, Dict, Any, Union
 import logging
 from .jaf_eval import jaf_eval
-from .dsl.parse import parse_dsl
 
 logger = logging.getLogger(__name__)
 
@@ -25,14 +24,6 @@ def jaf(data: List[Dict], query: Union[List, str]) -> List[int]:
     """
     if not query:
         raise jafError("No query provided.")
-
-    if isinstance(query, str):
-        # Parse the DSL string into an AST
-        try:
-            query = parse_dsl(query)
-        except Exception as e:
-            logger.error(f"Failed to parse DSL query: {e}")
-            raise
 
     logger.debug(f"Applying {query=} to {len(data)} objects.")
     try:

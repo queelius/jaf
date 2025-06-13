@@ -5,7 +5,6 @@ import logging
 from typing import List, Dict, Optional, Union # Added Optional, Union
 
 from .jaf import jaf, jafError
-from .dsl.parse import parse_dsl
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +100,7 @@ def main():
         "--query", 
         type=str, 
         required=True, 
-        help="Filtering query according to `jaf` DSL or AST (as a JSON string)."
+        help="Filtering query according to `jaf` JSON AST."
     )
     parser.add_argument(
         "--recursive", 
@@ -127,34 +126,16 @@ def main():
     logging.basicConfig(level=getattr(logging, args.log_level.upper()),
                         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-    query_input_str_or_ast: Union[str, List] = args.query
-    parsed_query: Optional[List] = None
-
-    if args.query.strip().startswith("["):
-        try:
-            parsed_query = json.loads(args.query)
-            logger.info("Query parsed as JSON AST.")
-        except json.JSONDecodeError:
-            logger.info("Query is not a valid JSON AST, treating as DSL string.")
-            # Fall through to DSL parsing
+    query = json.loads(args.query)
     
-    if parsed_query is None and isinstance(query_input_str_or_ast, str): # If not already parsed as AST
-        try:
-            parsed_query = parse_dsl(query_input_str_or_ast)
-            logger.info("Query parsed as DSL string.")
-        except Exception as e:
-            print(f"Error parsing JAF DSL query: {e}")
-            logger.error(f"Query DSL parsing error: {e}", exc_info=True)
-            return
-    elif not isinstance(parsed_query, list) and parsed_query is not None: # Should be a list if AST
-        print(f"Error: Parsed query AST is not a list: {type(parsed_query)}")
-        logger.error(f"Invalid query AST type: {type(parsed_query)}")
+    if not isinstance(query, list) and query is not None: # Should be a list
+        print(f"Error: Query AST is not a list: {type(query)}")
+        logger.error(f"Invalid query AST type: {type(query)}")
         return
     
-    if parsed_query is None:
+    if query is None:
         print("Error: Query could not be parsed.")
         return
-
 
     file_paths_to_process: List[str] = []
     if os.path.isdir(args.input_source):
@@ -186,7 +167,7 @@ def main():
             continue
         
         try:
-            matching_indices = jaf(objects_from_file, parsed_query)
+            matching_indices = jaf(objects_from_file, query)
             if matching_indices:
                 matched_data = [objects_from_file[i] for i in matching_indices]
                 aggregated_results.append({
