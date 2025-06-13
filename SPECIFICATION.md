@@ -80,15 +80,15 @@ Each component in the `path_components_list` is a list itself, where the first e
 
 **Path Evaluation (`eval_path` function):**
 
-The `eval_path(obj, path_components_list)` function (internally used by the `["path", ...]` special form) evaluates the given path against the `obj` (which is typically a single JSON object from the input array).
+The `eval_path(obj, path_components_list)` function (internally used by the `["path", ...]` special form) evaluates the given path against the `obj`.
 
 - **Return Value**:
-    - If the path successfully resolves to a single, definite value (e.g., `[["key", "name"]]` on an object with a "name" key), that value is returned directly. This includes `None` if the field exists and its value is `null`.
-    - If the path involves components that can yield multiple values (e.g., `["indices", ...]`, `["slice", ...]`, `["regex_key", ...]`, `["wc_level"]`, `["wc_recursive"]`), or if a segment of the path results in multiple matches due to these components, `eval_path` returns a `PathValues` object. A `PathValues` object is a specialized list containing all the values found.
-    - If a path segment does not match (e.g., a key not found, an index out of bounds for a specific index access):
-        - If the overall path was intended to yield a single value (no multi-match components like `wc_level`, `slice`, etc.) and fails at any point, `eval_path` returns an empty list `[]` to signify "not found" or "no value".
-        - If the path could yield multiple values (due to multi-match components) and no values are found for those components, it contributes to an empty `PathValues` (which behaves like an empty list).
+    - If the path does not contain multi-match components (i.e., only uses `["key", ...]` or `["index", ...]`) and successfully resolves to a single, definite value, that value is returned directly. This includes `None` if the field exists and its value is `null`.
+    - If the path involves components that can naturally yield multiple values (e.g., `["indices", ...]`, `["slice", ...]`, `["regex_key", ...]`, `["wc_level"]`, `["wc_recursive"]`), `eval_path` returns a `PathValues` object. `PathValues` is a specialized list subclass that holds the collection of all values found by the path. It preserves the order of discovery and can contain duplicates if the data and path logic lead to them. It offers convenience methods for accessing its contents (e.g., `first()`, `one()`).
+    - If a path that does *not* contain multi-match components fails to resolve at any point (e.g., a key not found, an index out of bounds for a specific index access), `eval_path` returns an empty list `[]`. This signifies "not found" or "no value" for a specific path.
+    - If a path *with* multi-match components finds no values, it returns an empty `PathValues` object (e.g., `PathValues([])`). This is distinct from the `[]` returned for a specific path not found.
     - If the `path_components_list` is empty (e.g., `["path", []]`), `eval_path` returns the original `obj`.
+    - In rare cases where a path *without* multi-match components unexpectedly yields multiple distinct results, `eval_path` may also wrap these results in a `PathValues` object with a warning.
 
 **Examples of Path Syntax:**
 
@@ -195,7 +195,7 @@ All functions follow this pattern:
 
 ### 4. `PathValues` in Predicates and Functions (Interaction with `adapt_jaf_operator`)
 
-When a `PathValues` object (the result of a `["path", ...]` expression involving components like `wc_level`, `wc_recursive`, `indices`, `slice`, or `regex_key`) is used as an argument to a predicate or a value-transforming function, JAF (via the `adapt_jaf_operator` utility) employs a specific evaluation strategy.
+When a `PathValues` object (the result of a `["path", ...]` expression involving components like `wc_level`, `wc_recursive`, `indices`, `slice`, or `regex_key`) is used as an argument to a predicate or a value-transforming function, JAF (via the `adapt_jaf_operator` utility) employs a specific evaluation strategy. `PathValues` represents the collection of all values found by such a path.
 
 **a. Argument Expansion (Cartesian Product):**
 
@@ -232,9 +232,10 @@ When a `PathValues` object (the result of a `["path", ...]` expression involving
 
 ### Path Errors
 
-- Non-existent paths (key not found, index out of bounds for specific index access) result in `eval_path` returning `[]` (empty list).
-- A path to a field that exists but has a `null` value will result in `eval_path` returning `None`.
-- Use `exists?` to check path existence. `exists?` returns `true` if `eval_path` returns anything other than `[]`.
+- Non-existent specific paths (key not found, index out of bounds for specific index access) result in `eval_path` returning `[]` (empty list).
+- A multi-match path that finds no values results in `eval_path` returning an empty `PathValues` object.
+- A path to a field that exists but has a `null` value will result in `eval_path` returning `None` (if it's a specific path resolving to that `null`).
+- Use `exists?` to check path existence. `exists?` returns `true` if `eval_path` for the given path components returns anything other than an empty list `[]` (when the path is specific and not found) or an empty `PathValues` (when the path is multi-match and not found). A path to a `null` value *does* exist and `exists?` will return `true`.
 
 ### Type Errors
 

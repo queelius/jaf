@@ -51,20 +51,17 @@ At the heart of data access in JAF is its Path System. This system can be though
 
 The `["path", path_components_list]` special form uses an internal `eval_path` function to resolve these path expressions against a JSON object.
 
-- **Single Value**: If a path resolves to one specific value (including `null`), that value is returned.
-- **Multiple Values (`PathValues`)**: If a path uses components like `indices`, `slice`, `regex_key`, `wc_level`, or `wc_recursive`, it can return multiple values. These are returned in a special list-like object called `PathValues`.
-- **Not Found**: If a path segment doesn't match (e.g., key not found, index out of bounds for a specific index), `eval_path` returns an empty list `[]` to signify "not found".
+- **Single Value**: If a path that does not contain multi-match components (like wildcards or slices) resolves to one specific value (including `null`), that value is returned directly.
+- **Multiple Values (`PathValues`)**: If a path uses components that can naturally yield multiple results (e.g., `indices`, `slice`, `regex_key`, `wc_level`, or `wc_recursive`), it returns a `PathValues` object. `PathValues` is a specialized list subclass that holds the collection of all values found by the path. It preserves the order of discovery and can contain duplicates if the data and path logic lead to them. It also provides convenience methods like `first()`, `one()`, etc.
+- **Not Found (Specific Path)**: If a path that does *not* contain multi-match components fails to resolve (e.g., key not found, index out of bounds for a specific index access), `eval_path` returns an empty list `[]` to signify "not found".
+- **Not Found (Multi-match Path)**: If a path *with* multi-match components finds no values, it returns an empty `PathValues` object (e.g., `PathValues([])`). This is distinct from the `[]` returned for a specific path not found.
 - **Empty Path**: `["path", []]` returns the original object.
-
-**Path Expressions in JAF Queries:**
-
-The `["path", path_components_list]` expression is how this path language is embedded into JAF queries. The result of this expression (a single value, `None`, `[]`, or a `PathValues` list) is then used by the enclosing JAF operator.
 
 **Wildcard/Multi-Value Path Behavior in Predicates (Existential Quantification - ∃):**
 
-When a path expression results in a `PathValues` list (due to wildcards, slices, etc.) and is used as an argument to a predicate:
+When a path expression results in a `PathValues` object (due to wildcards, slices, etc.) and is used as an argument to a predicate:
 
-- The predicate is `true` if **at least one** value (or combination of values, if multiple such paths are arguments) from the `PathValues` satisfies the predicate.
+- The predicate is `true` if **at least one** value (or combination of values, if multiple such paths are arguments) from the `PathValues` collection satisfies the predicate.
 - Example: `["eq?", ["path", [["key", "projects"], ["wc_level"], ["key", "status"]]], "completed"]`
   This is true if *any* project has its status as "completed".
 
