@@ -142,6 +142,7 @@ def path_ast_to_string(path_ast: List[List[Any]]) -> str:
     Example:
         [["key", "user"], ["index", 0], ["key", "name"]] -> "user[0].name"
         [["wc_recursive"], ["key", "id"]] -> "**.id"
+        [["root"], ["key", "config"]] -> "#.config"
     """
     if not path_ast:
         return ""
@@ -155,12 +156,25 @@ def path_ast_to_string(path_ast: List[List[Any]]) -> str:
         args = component_list_item[1:]
         current_str = ""
 
+        is_accessor = op in ["index", "indices", "slice"] # Operations that don't get a preceding dot
+
+        if i > 0 and not is_accessor:
+            # Ensure the previous op also wasn't an accessor that would be followed by a non-accessor
+            # This simple check works because accessors are always directly appended.
+            # Keys, wildcards, regex, and root will need a separator if not first.
+            prev_op = path_ast[i-1][0]
+            if prev_op not in ["index", "indices", "slice"]: # Avoid a..[*] or a.~/regex/
+                 # Check if previous op was a key-like op.
+                 # More robustly, only add dot if current op is key-like and previous was also key-like
+                 # or if current op is key-like and it's not the first element.
+                 # The current simple `if i > 0:` for key-like ops handles this.
+                 pass # Dot is handled by specific key-like ops below
+
         if op == "key":
             if not (len(args) == 1 and isinstance(args[0], str)):
                 raise PathSyntaxError(f"'key' operation expects a single string argument.", path_segment=component_list_item, full_path_ast=path_ast)
+            if i > 0 : result_parts.append(".")
             current_str = args[0]
-            if i > 0:
-                result_parts.append(".")
         elif op == "index":
             if not (len(args) == 1 and isinstance(args[0], int)):
                 raise PathSyntaxError(f"'index' operation expects a single integer argument.", path_segment=component_list_item, full_path_ast=path_ast)
@@ -191,21 +205,23 @@ def path_ast_to_string(path_ast: List[List[Any]]) -> str:
         elif op == "regex_key":
             if not (len(args) == 1 and isinstance(args[0], str)):
                 raise PathSyntaxError(f"'regex_key' operation expects a single string pattern argument.", path_segment=component_list_item, full_path_ast=path_ast)
+            if i > 0 : result_parts.append(".")
             current_str = f"~/{args[0]}/"
-            if i > 0:
-                result_parts.append(".")
         elif op == "wc_level":
             if args:
                 raise PathSyntaxError(f"'wc_level' operation expects no arguments.", path_segment=component_list_item, full_path_ast=path_ast)
+            if i > 0 : result_parts.append(".")
             current_str = "[*]"
-            if i > 0: 
-                result_parts.append(".")
         elif op == "wc_recursive":
             if args:
                 raise PathSyntaxError(f"'wc_recursive' operation expects no arguments.", path_segment=component_list_item, full_path_ast=path_ast)
+            if i > 0 : result_parts.append(".")
             current_str = "**"
-            if i > 0:
-                result_parts.append(".")
+        elif op == "root":
+            if args:
+                raise PathSyntaxError(f"'root' operation expects no arguments.", path_segment=component_list_item, full_path_ast=path_ast)
+            if i > 0 : result_parts.append(".")
+            current_str = "#" # Using '#' to represent the root operator
         else:
             raise PathSyntaxError(f"Unknown JAF path component operation: '{op}'", path_segment=component_list_item, full_path_ast=path_ast)
 
@@ -228,10 +244,11 @@ def _path_has_multi_match_components(path_components_list: List[List[Any]]) -> b
             return True
     return False
 
-def _match_recursive(current_obj: Any, components: List[List[Any]], full_path_ast_for_error: List[List[Any]]) -> List[Any]:
+def _match_recursive(current_obj: Any, components: List[List[Any]], full_path_ast_for_error: List[List[Any]], root_obj_for_path: Any) -> List[Any]:
     """
     Internal recursive engine for `eval_path`.
     It interprets the path 'components' against the 'current_obj'.
+    `root_obj_for_path` is the absolute root object for the entire path evaluation.
     Returns a flat list of all resolved values.
     Raises PathSyntaxError for malformed AST components.
     """
@@ -257,7 +274,7 @@ def _match_recursive(current_obj: Any, components: List[List[Any]], full_path_as
             raise PathSyntaxError("'key' operation expects a single string argument.", path_segment=component, full_path_ast=full_path_ast_for_error)
         key_name = args[0]
         if isinstance(current_obj, dict) and key_name in current_obj:
-            collected_values.extend(_match_recursive(current_obj[key_name], remaining_components, full_path_ast_for_error))
+            collected_values.extend(_match_recursive(current_obj[key_name], remaining_components, full_path_ast_for_error, root_obj_for_path))
     
     elif op == "index":
         if not (len(args) == 1 and isinstance(args[0], int)):
@@ -265,7 +282,7 @@ def _match_recursive(current_obj: Any, components: List[List[Any]], full_path_as
         idx_val = args[0]
         if isinstance(current_obj, list):
             if -len(current_obj) <= idx_val < len(current_obj):
-                 collected_values.extend(_match_recursive(current_obj[idx_val], remaining_components, full_path_ast_for_error))
+                 collected_values.extend(_match_recursive(current_obj[idx_val], remaining_components, full_path_ast_for_error, root_obj_for_path))
     
     elif op == "indices":
         if not (len(args) == 1 and isinstance(args[0], list) and all(isinstance(idx, int) for idx in args[0])):
@@ -274,7 +291,7 @@ def _match_recursive(current_obj: Any, components: List[List[Any]], full_path_as
         if isinstance(current_obj, list):
             for idx_val in idx_list:
                 if isinstance(idx_val, int) and -len(current_obj) <= idx_val < len(current_obj):
-                    collected_values.extend(_match_recursive(current_obj[idx_val], remaining_components, full_path_ast_for_error))
+                    collected_values.extend(_match_recursive(current_obj[idx_val], remaining_components, full_path_ast_for_error, root_obj_for_path))
     
     elif op == "slice":
         if not (1 <= len(args) <= 3):
@@ -298,7 +315,7 @@ def _match_recursive(current_obj: Any, components: List[List[Any]], full_path_as
                 s = slice(start_val, stop_val, actual_step)
                 sliced_items = current_obj[s]
                 for item in sliced_items:
-                    collected_values.extend(_match_recursive(item, remaining_components, full_path_ast_for_error))
+                    collected_values.extend(_match_recursive(item, remaining_components, full_path_ast_for_error, root_obj_for_path))
             except (TypeError, ValueError) as e: # Should be rare if AST validation is correct
                 logger.debug(f"Error during slicing for {current_obj} with slice({start_val},{stop_val},{actual_step}): {e}")
                 
@@ -311,7 +328,7 @@ def _match_recursive(current_obj: Any, components: List[List[Any]], full_path_as
             if isinstance(current_obj, dict):
                 for k, v_obj in current_obj.items():
                     if regex.match(k):
-                        collected_values.extend(_match_recursive(v_obj, remaining_components, full_path_ast_for_error))
+                        collected_values.extend(_match_recursive(v_obj, remaining_components, full_path_ast_for_error, root_obj_for_path))
         except re.error as e:
             raise PathSyntaxError(f"Invalid regex pattern in path component: '{pattern_str}'. Error: {e}", path_segment=component, full_path_ast=full_path_ast_for_error)
             
@@ -320,24 +337,29 @@ def _match_recursive(current_obj: Any, components: List[List[Any]], full_path_as
             raise PathSyntaxError("'wc_level' operation expects no arguments.", path_segment=component, full_path_ast=full_path_ast_for_error)
         if isinstance(current_obj, dict):
             for v_obj in current_obj.values():
-                collected_values.extend(_match_recursive(v_obj, remaining_components, full_path_ast_for_error))
+                collected_values.extend(_match_recursive(v_obj, remaining_components, full_path_ast_for_error, root_obj_for_path))
         elif isinstance(current_obj, list):
             for item in current_obj:
-                collected_values.extend(_match_recursive(item, remaining_components, full_path_ast_for_error))
+                collected_values.extend(_match_recursive(item, remaining_components, full_path_ast_for_error, root_obj_for_path))
                 
     elif op == "wc_recursive":
         if args:
             raise PathSyntaxError("'wc_recursive' operation expects no arguments.", path_segment=component, full_path_ast=full_path_ast_for_error)
         # Match current level against remainder
-        collected_values.extend(_match_recursive(current_obj, remaining_components, full_path_ast_for_error))
+        collected_values.extend(_match_recursive(current_obj, remaining_components, full_path_ast_for_error, root_obj_for_path))
         # Match children against the wc_recursive op + remainder
         current_recursive_op_and_remainder = [component] + remaining_components
         if isinstance(current_obj, dict):
             for v_obj in current_obj.values():
-                collected_values.extend(_match_recursive(v_obj, current_recursive_op_and_remainder, full_path_ast_for_error))
+                collected_values.extend(_match_recursive(v_obj, current_recursive_op_and_remainder, full_path_ast_for_error, root_obj_for_path))
         elif isinstance(current_obj, list):
             for item in current_obj:
-                collected_values.extend(_match_recursive(item, current_recursive_op_and_remainder, full_path_ast_for_error))
+                collected_values.extend(_match_recursive(item, current_recursive_op_and_remainder, full_path_ast_for_error, root_obj_for_path))
+    elif op == "root":
+        if args:
+            raise PathSyntaxError("'root' operation expects no arguments.", path_segment=component, full_path_ast=full_path_ast_for_error)
+        # Reset current_obj to the absolute root and continue with remaining components
+        collected_values.extend(_match_recursive(root_obj_for_path, remaining_components, full_path_ast_for_error, root_obj_for_path))
     else:
         raise PathSyntaxError(f"Unknown path operation code encountered: '{op}'", path_segment=component, full_path_ast=full_path_ast_for_error)
 
@@ -363,7 +385,7 @@ def eval_path(path_components_list: List[List[Any]], obj: Any) -> Any:
                 full_path_ast=path_components_list
             )
 
-    matched_values = _match_recursive(obj, path_components_list, full_path_ast_for_error=path_components_list)
+    matched_values = _match_recursive(obj, path_components_list, full_path_ast_for_error=path_components_list, root_obj_for_path=obj)
 
     is_specific_path_intent = not _path_has_multi_match_components(path_components_list)
 

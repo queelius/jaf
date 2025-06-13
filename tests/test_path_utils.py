@@ -57,6 +57,14 @@ class TestPathAstToString(unittest.TestCase):
         # This might be an unusual path, but the function should handle it
         self.assertEqual(path_ast_to_string([["wc_level"], ["key", "name"]]), "[*].name")
 
+    def test_root_operator_string(self):
+        self.assertEqual(path_ast_to_string([["root"]]), "#")
+        self.assertEqual(path_ast_to_string([["root"], ["key", "config"]]), "#.config")
+        self.assertEqual(path_ast_to_string([["key", "user"], ["root"], ["key", "config"]]), "user.#.config")
+        self.assertEqual(path_ast_to_string([["key", "user"], ["index", 0], ["root"], ["key", "config"]]), "user[0].#.config")
+        self.assertEqual(path_ast_to_string([["key", "user"], ["slice", 0, 1, None], ["root"], ["key", "config"]]), "user[0:1].#.config")
+
+
     def test_complex_path(self):
         ast = [
             ["key", "users"], 
@@ -64,9 +72,12 @@ class TestPathAstToString(unittest.TestCase):
             ["key", "profile"], 
             ["wc_level"], 
             ["key", "detail"],
-            ["slice", 1, None, None]
+            ["slice", 1, None, None],
+            ["root"],
+            ["key", "metadata"],
+            ["regex_key", "version_\\d+"]
         ]
-        self.assertEqual(path_ast_to_string(ast), "users[0].profile.[*].detail[1:]")
+        self.assertEqual(path_ast_to_string(ast), "users[0].profile.[*].detail[1:].#.metadata.~/version_\\d+/")
 
     def test_regex_key_at_start(self):
         self.assertEqual(path_ast_to_string([["regex_key", "error_\\d+"]]), "~/error_\\d+/")
@@ -76,4 +87,36 @@ class TestPathAstToString(unittest.TestCase):
     
     def test_slice_at_start(self):
         self.assertEqual(path_ast_to_string([["slice", 0,1,None]]), "[0:1]")
+
+    def test_invalid_component_format(self):
+        with self.assertRaisesRegex(PathSyntaxError, "Invalid AST component format: expected a non-empty list."):
+            path_ast_to_string([["key", "user"], "not-a-list"]) # type: ignore
+        with self.assertRaisesRegex(PathSyntaxError, "Invalid AST component format: expected a non-empty list."):
+            path_ast_to_string([["key", "user"], []])
+
+
+    def test_invalid_regex_key(self):
+        with self.assertRaisesRegex(PathSyntaxError, "'regex_key' operation expects a single string pattern argument."):
+            path_ast_to_string([["regex_key", 123]]) # type: ignore
+
+    def test_invalid_operation_arguments(self):
+        with self.assertRaisesRegex(PathSyntaxError, "'key' operation expects a single string argument."):
+            path_ast_to_string([["key", 123]]) # type: ignore
+        with self.assertRaisesRegex(PathSyntaxError, "'index' operation expects a single integer argument."):
+            path_ast_to_string([["index", "abc"]]) # type: ignore
+        with self.assertRaisesRegex(PathSyntaxError, "'indices' operation expects a single list of integers argument."):
+            path_ast_to_string([["indices", [1, "b"]]]) # type: ignore
+        with self.assertRaisesRegex(PathSyntaxError, "'slice' operation expects 1 to 3 integer or None arguments"):
+            path_ast_to_string([["slice", "a", "b", "c"]]) # type: ignore
+        with self.assertRaisesRegex(PathSyntaxError, "'wc_level' operation expects no arguments."):
+            path_ast_to_string([["wc_level", "arg"]])
+        with self.assertRaisesRegex(PathSyntaxError, "'wc_recursive' operation expects no arguments."):
+            path_ast_to_string([["wc_recursive", "arg"]])
+        with self.assertRaisesRegex(PathSyntaxError, "'root' operation expects no arguments."):
+            path_ast_to_string([["root", "arg"]])
+        with self.assertRaisesRegex(PathSyntaxError, "Unknown JAF path component operation: 'unknown_op'"):
+            path_ast_to_string([["unknown_op", "arg"]])
+
+if __name__ == '__main__':
+    unittest.main()
 
