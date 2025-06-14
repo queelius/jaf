@@ -1,0 +1,16 @@
+{
+  "id": 7510,
+  "name": [
+    "Dana"
+  ],
+  "type": true,
+  "attributes": {
+    "age": "unknown",
+    "active": "yes",
+    "tags": "oops",
+    "metadata": {
+      "created": 1234567890,
+      "updated": {}
+    }
+  }
+}

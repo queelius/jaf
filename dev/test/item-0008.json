@@ -1,0 +1,18 @@
+{
+  "id": "dd93a510-70f0-4545-9419-d9687e2cf916",
+  "name": "Grace",
+  "type": "admin",
+  "attributes": {
+    "age": 28,
+    "active": false,
+    "tags": [
+      "beta",
+      "legacy",
+      "critical"
+    ],
+    "metadata": {
+      "created": "2025-06-14T04:04:57+00:00",
+      "updated": "2025-06-14T04:04:57+00:00"
+    }
+  }
+}

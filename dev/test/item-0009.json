@@ -1,0 +1,13 @@
+{
+  "id": "b72bb14a-f7a0-40db-9b13-adbc6998708e",
+  "type": "admin",
+  "attributes": {
+    "age": 31,
+    "active": false,
+    "tags": [],
+    "metadata": {
+      "created": "2025-06-14T04:04:57+00:00",
+      "updated": "2025-06-14T04:04:57+00:00"
+    }
+  }
+}

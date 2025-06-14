@@ -2,19 +2,42 @@
 
 ## Overview
 
-JAF is a simple, focused domain-specific language for filtering JSON arrays. It\'s designed to be **not Turing-complete** and focuses solely on filtering with predictable boolean results.
+JAF is a simple, focused domain-specific language for filtering JSON arrays. It's designed to be **not Turing-complete** and focuses solely on filtering with predictable boolean results. It also supports boolean algebraic operations on sets of filter results.
 
 ## Core Philosophy
 
 - **Simple**: Easy to understand and debug
 - **Predictable**: Every query returns boolean results for filtering
 - **Secure**: No arbitrary code execution or side effects
-- **Focused**: Designed specifically for JSON array filtering
+- **Focused**: Designed specifically for JSON array filtering and result set manipulation
 
 ## Data Model
 
-**Input**: `Array<Object>` - An array of JSON objects
-**Output**: `Array<Number>` - Indices of objects that matched the filter (returned `true`)
+**Input to `jaf` function**: `Array<Object>` - An array of JSON objects.
+**Output of `jaf` function**: `JafResultSet` - An object representing the filter results.
+
+## `JafResultSet` Object
+
+A `JafResultSet` represents the set of indices from a data collection that satisfy a JAF query, along with metadata to ensure logical consistency when combining results or resolving them back to original data.
+
+**Attributes / JSON Structure:**
+
+When serialized to JSON (e.g., by the CLI), a `JafResultSet` has the following structure:
+
+-   `indices`: `Array<Number>` (integer)
+    -   A sorted list of unique, 0-based indices of the objects from the original data array that matched the query.
+-   `collection_size`: `Number` (integer)
+    -   The total number of items in the original data collection from which the indices were derived. This is crucial for operations like `NOT`.
+-   `collection_id`: `Any` (string, number, null, etc.)
+    -   An optional identifier for the original data collection. This helps ensure that boolean operations are performed between result sets derived from the same logical collection. It can be a file path, directory path, or a user-defined ID.
+-   `filenames_in_collection`: `Array<String>` (optional)
+    -   A sorted list of unique, absolute file paths that contributed data to form the collection. This is primarily populated when the input to `jaf filter` is a directory. It's used by `jaf resolve` (and `JafResultSet.get_matching_objects()`) to locate the original data.
+
+**Example JSON Output (compact):**
+```json
+{"indices":[0,2],"collection_size":3,"collection_id":"/path/to/data.json","filenames_in_collection":["/path/to/data.json"]}
+```
+If `filenames_in_collection` is not present or `null`, it's omitted from the JSON.
 
 ## Query Format
 
@@ -39,7 +62,7 @@ Each component in the `path_components_list` is a list itself, where the first e
 **Supported Path Component Tags:**
 
 1.  `["key", <string_key_name>]`
-    *   Accesses an object\'s property by its string key.
+    *   Accesses an object's property by its string key.
     *   Example: `[["key", "user"]]` accesses `obj["user"]`.
 
 2.  `["index", <integer_index_value>]`
@@ -77,6 +100,10 @@ Each component in the `path_components_list` is a list itself, where the first e
     *   Matches any field name recursively at any depth within the current object structure. It also considers the current level for matches if the subsequent path parts align.
     *   **Motivation**: Essential for deep searches where the target data might be nested at varying or unknown depths.
     *   Example: `[["wc_recursive"], ["key", "error_code"]]` finds any "error_code" field anywhere in the object.
+8.  `["root"]`
+    *   Represents the root of the object against which the entire path expression is being evaluated.
+    *   Allows paths to "restart" or reference from the top-level object, even if the current evaluation context is nested due to prior path components.
+    *   Example: `[["key", "user"], ["root"], ["key", "config"]]` - if `obj` is `{"user": {"name": "A"}, "config": {"setting": "X"}}`, this path would first go to `obj["user"]`, then `["root"]` would reset the context to `obj`, and `["key", "config"]` would access `obj["config"]`.
 
 **Path Evaluation (`eval_path` function):**
 
@@ -126,7 +153,7 @@ The `eval_path(obj, path_components_list)` function (internally used by the `["p
 
 - `path` - Extract values: `["path", [["key", "field"], ["key", "subfield"]]]`
 - `exists?` - Check existence: `["exists?", ["path", [["key", "field"]]]]`
-  - `exists?` returns `true` if `eval_path` for the given path components returns anything other than an empty list `[]`. A path to a `null` value *does* exist and `exists?` will return `true`.
+  - `exists?` returns `true` if `eval_path` for the given path components returns anything other than an empty list `[]` (when the path is specific and not found) or an empty `PathValues` (when the path is multi-match and not found). A path to a `null` value *does* exist and `exists?` will return `true`.
 - `if` - Conditional: `["if", condition, true-expr, false-expr]`
 - `and` - Logical AND with short-circuit: `["and", expr1, expr2, ...]`
 - `or` - Logical OR with short-circuit: `["or", expr1, expr2, ...]`
@@ -185,7 +212,7 @@ All functions follow this pattern:
 
 ### 2. Special Forms
 
-- Evaluated with custom logic (don\'t evaluate all args first).
+- Evaluated with custom logic (don't evaluate all args first).
 - Handle control flow and path access.
 
 ### 3. Regular Functions (Predicates and Value Extractors)
@@ -206,7 +233,7 @@ When a `PathValues` object (the result of a `["path", ...]` expression involving
 **b. Predicate Evaluation (Existential Quantification - ∃):**
 
 - If the function being called is a **predicate** (typically its name ends with `?`):
-  - The predicate evaluates to `true` if **there exists at least one combination** of expanded arguments for which the predicate\'s condition holds.
+  - The predicate evaluates to `true` if **there exists at least one combination** of expanded arguments for which the predicate's condition holds.
   - If all combinations evaluate to `false`, or if any `PathValues` argument was initially empty (resulting in no combinations to test), the overall predicate evaluates to `false`.
   - **Example**: `["eq?", ["path", [["key", "items"], ["wc_level"], ["key", "status"]]], "completed"]`.
     Let `S = eval_path(obj, [["key", "items"], ["wc_level"], ["key", "status"]]])`. The predicate is true if ∃ *s* ∈ `S` such that `eq?(s, "completed")` is true.
@@ -228,6 +255,67 @@ When a `PathValues` object (the result of a `["path", ...]` expression involving
 - The `path` operator itself is designed for *data extraction* – it gathers all values that match a given path. It does not inherently perform universal quantification ("for all").
 - Universal quantification is a *checking* operation. While not directly supported by `path`, such checks can often be constructed using negation and existential quantification (e.g., "it is NOT true that there EXISTS an item that does NOT satisfy the condition"). For example, to check if all items in a list have `status == "active"`: `["not", ["in?", false, ["map", ["lambda", "x", ["eq?", ["path", [["key", "x"], ["key", "status"]]], "active"]], ["path", [["key", "items"]]]]]]` (assuming a hypothetical `map` and `lambda` for illustration; JAF does not have these directly but similar logic can be built with `and`/`or` over known items or by checking for the non-existence of a counter-example). A simpler approach for "all items satisfy X" is often "NOT (EXISTS item that does NOT satisfy X)".
 
+## Boolean Algebra on Result Sets
+
+The `JafResultSet` class provides methods for performing boolean algebra. This allows combining results from multiple `jaf` filter operations.
+
+**Motivation:**
+-   **Modularity**: Build complex filters from simpler, pre-computed results.
+-   **Clarity**: Easier to express and understand intricate logic.
+-   **Reusability**: Saved result sets can be reused.
+-   **Formal Semantics**: Leverages well-understood set theory.
+
+**Core Methods (Python `JafResultSet` class):**
+
+Each method returns a *new* `JafResultSet` instance.
+
+1.  `AND(self, other: 'JafResultSet') -> 'JafResultSet'` (or `self & other`)
+    *   Performs a set intersection of `self.indices` and `other.indices`.
+    *   Requires compatibility (see below).
+    *   The resulting `collection_id` is `self.collection_id` if not None, else `other.collection_id`.
+    *   The resulting `filenames_in_collection` is `self.filenames_in_collection` if not None, else `other.filenames_in_collection`.
+
+2.  `OR(self, other: 'JafResultSet') -> 'JafResultSet'` (or `self | other`)
+    *   Performs a set union of `self.indices` and `other.indices`.
+    *   Requires compatibility.
+    *   Metadata propagation for `collection_id` and `filenames_in_collection` is the same as `AND`.
+
+3.  `NOT(self) -> 'JafResultSet'` (or `~self`)
+    *   Calculates the complement relative to `self.collection_size`.
+    *   `new_indices = {0, ..., self.collection_size - 1} - self.indices`.
+    *   Preserves `self.collection_id` and `self.filenames_in_collection`.
+
+4.  `XOR(self, other: 'JafResultSet') -> 'JafResultSet'` (or `self ^ other`)
+    *   Performs a set symmetric difference.
+    *   Requires compatibility.
+    *   Metadata propagation is the same as `AND`.
+
+5.  `SUBTRACT(self, other: 'JafResultSet') -> 'JafResultSet'` (or `self - other`)
+    *   Performs set difference (`self.indices - other.indices`).
+    *   Requires compatibility.
+    *   Metadata propagation is the same as `AND`.
+
+**Compatibility Check (`_check_compatibility`):**
+Before performing binary operations (AND, OR, XOR, SUBTRACT), `JafResultSet` instances must be compatible:
+-   `collection_size` must be identical.
+-   If both `collection_id`s are not None, they must be identical.
+-   If these conditions are not met, a `JafResultSetError` is raised.
+-   Differences in `filenames_in_collection` between two compatible result sets do not raise an error but may result in the output `JafResultSet` inheriting this attribute from one of the operands (typically `self`).
+
+## Resolving Result Sets to Original Data
+
+The `JafResultSet` class provides a method to retrieve the original data objects corresponding to its `indices`.
+
+**`get_matching_objects(self) -> List[Any]`:**
+-   Attempts to load the original data objects.
+-   **Data Source Determination**:
+    1.  If `self.filenames_in_collection` (a list of file paths) is present, these files are loaded in their sorted order to reconstruct the original collection.
+    2.  Else, if `self.collection_id` is a string representing a path to a single existing file, that file is loaded.
+    3.  If neither of the above provides a loadable source, a `JafResultSetError` is raised.
+-   **Validation**: After loading, it verifies that the total number of loaded objects matches `self.collection_size`. If not, a `JafResultSetError` is raised.
+-   **Return**: A list containing the original data objects at the indices specified in `self.indices`. The objects are returned in the order of the sorted indices.
+-   **Errors**: Raises `JafResultSetError` for issues like unresolvable data sources, file not found, or data inconsistencies.
+
 ## Error Handling
 
 ### Path Errors
@@ -241,6 +329,11 @@ When a `PathValues` object (the result of a `["path", ...]` expression involving
 
 - Type mismatches within predicate/function evaluations (after `PathValues` expansion) generally cause that specific evaluation instance to return `false` (for predicates) or contribute an error marker/skip (for transformers), rather than halting the entire query. The `adapt_jaf_operator` handles this gracefully.
 - Invalid query structure or unknown operators raise `jafError` or `ValueError`.
+
+### `JafResultSet` Errors
+-   Attempting boolean operations on incompatible `JafResultSet` instances raises `JafResultSetError`.
+-   Failure to load or deserialize a `JafResultSet` (e.g., from JSON) raises `ValueError` or `JafResultSetError`.
+-   Failure in `get_matching_objects()` (e.g., source not found, size mismatch) raises `JafResultSetError`.
 
 ## Example Queries
 
@@ -296,4 +389,4 @@ When a `PathValues` object (the result of a `["path", ...]` expression involving
 4. **Predictable Performance**: All operations have bounded execution time relative to data size and path complexity.
 5. **Boolean Results for Filtering**: Top-level queries (or conditions in `if`, `and`, `or`) must resolve to boolean values for filtering.
 
-This specification defines a minimal, focused JSON filtering language that\'s powerful enough for real-world use cases while remaining simple and predictable. The path system, with its tagged AST, enhances its explicitness and maintainability.
+This specification defines a minimal, focused JSON filtering language that's powerful enough for real-world use cases while remaining simple and predictable. The path system, with its tagged AST, enhances its explicitness and maintainability. The `JafResultSet` provides a robust mechanism for working with and combining filter results.

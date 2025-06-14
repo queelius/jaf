@@ -113,5 +113,5 @@ class TestJAFCore:
 
     def test_input_data_not_a_list_raises_error(self):
         """Test that jaf raises jafError if input data is not a list."""
-        with pytest.raises(jafError, match="Input data must be a list of dictionaries."):
+        with pytest.raises(jafError, match="Input data must be a list."):
             jaf({"not": "a list"}, ["eq?", ["path", [["key", "name"]]], "Alice"]) # type: ignore

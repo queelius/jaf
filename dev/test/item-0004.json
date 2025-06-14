@@ -1,0 +1,12 @@
+{
+  "id": "e739d562-2537-4dd2-a32e-0cfd22cfcb5a",
+  "name": "Grace",
+  "type": "superadmin",
+  "attributes": {
+    "age": 86,
+    "active": true,
+    "tags": [
+      "founder"
+    ]
+  }
+}

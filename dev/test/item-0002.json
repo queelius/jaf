@@ -1,0 +1,18 @@
+{
+  "id": "82ab4450-4e66-400f-a0e5-b5ef814533c3",
+  "name": "Alice",
+  "type": "moderator",
+  "attributes": {
+    "age": 41,
+    "active": true,
+    "tags": [
+      "legacy",
+      "staff",
+      "founder"
+    ],
+    "metadata": {
+      "created": "2025-06-14T04:04:57+00:00",
+      "updated": "2025-06-14T04:04:57+00:00"
+    }
+  }
+}

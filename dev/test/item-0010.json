@@ -1,0 +1,16 @@
+{
+  "id": 5746,
+  "name": [
+    "Eve"
+  ],
+  "type": true,
+  "attributes": {
+    "age": "unknown",
+    "active": "yes",
+    "tags": "oops",
+    "metadata": {
+      "created": 1234567890,
+      "updated": {}
+    }
+  }
+}

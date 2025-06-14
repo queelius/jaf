@@ -1,0 +1,18 @@
+{
+  "id": "76bf86f0-eef9-49b3-b6da-187e88c9f7ef",
+  "name": "Charlie",
+  "type": "admin",
+  "attributes": {
+    "age": 13,
+    "active": false,
+    "tags": [
+      "beta",
+      "new",
+      "staff"
+    ],
+    "metadata": {
+      "created": "2025-06-14T04:04:57+00:00",
+      "updated": "2025-06-14T04:04:57+00:00"
+    }
+  }
+}

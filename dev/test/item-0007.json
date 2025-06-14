@@ -1,0 +1,19 @@
+{
+  "id": "e7448a69-cdab-4ecc-a98c-12c8c6606412",
+  "name": "Alice",
+  "type": "user",
+  "attributes": {
+    "age": 54,
+    "active": false,
+    "tags": [
+      "legacy",
+      "beta",
+      "new"
+    ],
+    "metadata": {
+      "created": "2025-06-14T04:04:57+00:00",
+      "updated": "2025-06-14T04:04:57+00:00"
+    }
+  },
+  "extra_j": "surprise!"
+}

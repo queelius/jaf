@@ -1,0 +1,16 @@
+{
+  "id": "3f2237d7-f83d-4bec-8abb-2f8c965e92c9",
+  "name": "Kim",
+  "type": "moderator",
+  "attributes": {
+    "age": 83,
+    "active": false,
+    "tags": [
+      "new"
+    ],
+    "metadata": {
+      "created": "2025-06-14T04:04:57+00:00",
+      "updated": "2025-06-14T04:04:57+00:00"
+    }
+  }
+}

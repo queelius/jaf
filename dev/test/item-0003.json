@@ -1,0 +1,17 @@
+{
+  "id": "baab94d1-72b3-4d66-9908-68cc624ec5eb",
+  "name": "Heidi",
+  "type": "moderator",
+  "attributes": {
+    "age": 26,
+    "active": false,
+    "tags": [
+      "founder",
+      "legacy"
+    ],
+    "metadata": {
+      "created": "2025-06-14T04:04:57+00:00",
+      "updated": "2025-06-14T04:04:57+00:00"
+    }
+  }
+}
