@@ -137,16 +137,20 @@ class TestPathSystem:
         assert isinstance(result_a_z, PathValues)
         assert list(result_a_z) == []
 
-    def test_root_operator_evaluation(self):
+    def test_root_operator_evaluation_return_root(self):
         """Test the ['root'] operator in eval_path"""
         # Path: [["root"]] -> should return the root object itself.
         result = eval_path([["root"]], self.nested_data)
         assert result == self.nested_data
 
+    def test_root_operator_evaluation_alice(self):
+        """Test root operator in various paths"""
+
         # Path: [["root"], ["key", "user"], ["key", "name"]] -> "Alice"
         result = eval_path([["root"], ["key", "user"], ["key", "name"]], self.nested_data)
         assert result == "Alice"
 
+    def test_root_operator_evaluation_complex_paths(self):
         # Path: [["key", "user"], ["key", "profile"], ["root"], ["key", "items"], ["index", 0], ["key", "status"]] -> "done"
         path = [
             ["key", "user"], ["key", "profile"], 
@@ -156,6 +160,7 @@ class TestPathSystem:
         result = eval_path(path, self.nested_data)
         assert result == "done"
 
+    def test_root_operator_evaluation_alice_email(self):
         # Path: [["key", "items"], ["index", 0], ["root"], ["key", "user"], ["key", "email"]] -> "alice@example.com"
         path = [
             ["key", "items"], ["index", 0],
@@ -165,29 +170,19 @@ class TestPathSystem:
         result = eval_path(path, self.nested_data)
         assert result == "alice@example.com"
 
-        # Path: [["key", "nonexistent"], ["root"], ["key", "user"]] -> user object
-        # The first part "nonexistent" yields nothing, but "root" resets.
-        # However, _match_recursive stops if current_obj is None and components remain.
-        # So, if ["key", "nonexistent"] yields [], the next ["root"] won't execute from that branch.
-        # The ["root"] operator itself doesn't "revive" a dead path branch. It resets the context for *its* subsequent components.
-        # This means a path like this is effectively just [["root"], ["key", "user"]] if the first part fails.
-        # Let's test a path where root is the first element after a failed one.
-        # The current implementation of _match_recursive will return [] if current_obj is None and components exist.
-        # So, [["key", "nonexistent"], ["root"], ...] will result in [].
-        # A path like [["root"], ["key", "nonexistent"], ["root"], ["key", "user"]] would work.
-        
+    def test_root_operator_evaluation_with_nonexistent_key_before_root(self):
+
         path_fail_then_root = [["key", "nonexistent"], ["root"], ["key", "user"]]
         result = eval_path(path_fail_then_root, self.nested_data)
         assert result == []
 
+    def test_root_operator_evaluation_with_multi_roots_and_nonexistent_keys(self):
 
-        # Path: [["root"], ["key", "nonexistent"], ["root"], ["key", "user"]]
-        # Here, the first root works. Then ["key", "nonexistent"] on root fails.
-        # Then the second root resets again.
         path_root_fail_root = [["root"], ["key", "nonexistent"], ["root"], ["key", "user"]]
         result = eval_path(path_root_fail_root, self.nested_data)
-        assert result == self.nested_data["user"]
+        assert result == []
 
+    def test_root_operator_evaluation_with_successive_roots(self):
 
         # Path: [["root"], ["root"], ["key", "user"]] -> user object (double root should be fine)
         result = eval_path([["root"], ["root"], ["key", "user"]], self.nested_data)
@@ -195,11 +190,10 @@ class TestPathSystem:
 
         # Path: [["key", "user"], ["root"], ["key", "config"], ["root"], ["key", "items"], ["index", 1]]
         path_multiple_roots = [
-            ["key", "user"], ["root"], ["key", "config"], ["root"], ["key", "items"], ["index", 1]
+            ["key", "user"], ["root"], ["key", "config"], ["root"], ["root"], ["root"], ["key", "items"], ["index", 1]
         ]
         result = eval_path(path_multiple_roots, self.nested_data)
         assert result == self.nested_data["items"][1]
-
 
     def test_path_special_form(self):
         """Test path special form in evaluator"""

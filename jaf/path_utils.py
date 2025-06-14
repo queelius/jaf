@@ -154,7 +154,7 @@ def path_ast_to_string(path_ast: List[List[Any]]) -> str:
         
         op = component_list_item[0]
         args = component_list_item[1:]
-        current_str = ""
+        cur_str = ""
 
         is_accessor = op in ["index", "indices", "slice"] # Operations that don't get a preceding dot
 
@@ -174,15 +174,15 @@ def path_ast_to_string(path_ast: List[List[Any]]) -> str:
             if not (len(args) == 1 and isinstance(args[0], str)):
                 raise PathSyntaxError(f"'key' operation expects a single string argument.", path_segment=component_list_item, full_path_ast=path_ast)
             if i > 0 : result_parts.append(".")
-            current_str = args[0]
+            cur_str = args[0]
         elif op == "index":
             if not (len(args) == 1 and isinstance(args[0], int)):
                 raise PathSyntaxError(f"'index' operation expects a single integer argument.", path_segment=component_list_item, full_path_ast=path_ast)
-            current_str = f"[{args[0]}]"
+            cur_str = f"[{args[0]}]"
         elif op == "indices":
             if not (len(args) == 1 and isinstance(args[0], list) and all(isinstance(idx, int) for idx in args[0])):
                 raise PathSyntaxError(f"'indices' operation expects a single list of integers argument.", path_segment=component_list_item, full_path_ast=path_ast)
-            current_str = f"[{','.join(map(str, args[0]))}]"
+            cur_str = f"[{','.join(map(str, args[0]))}]"
         elif op == "slice":
             if not (1 <= len(args) <= 3 and (args[0] is None or isinstance(args[0], int)) and \
                     (len(args) < 2 or args[1] is None or isinstance(args[1], int)) and \
@@ -196,36 +196,36 @@ def path_ast_to_string(path_ast: List[List[Any]]) -> str:
             s_stop = _format_slice_part(stop)
             
             if start is None and stop is None and (step is None or step == 1):
-                current_str = "[:]" 
+                cur_str = "[:]" 
             elif step is None or step == 1: 
-                current_str = f"[{s_start}:{s_stop}]"
+                cur_str = f"[{s_start}:{s_stop}]"
             else: 
                 s_step = _format_slice_part(step)
-                current_str = f"[{s_start}:{s_stop}:{s_step}]"
+                cur_str = f"[{s_start}:{s_stop}:{s_step}]"
         elif op == "regex_key":
             if not (len(args) == 1 and isinstance(args[0], str)):
                 raise PathSyntaxError(f"'regex_key' operation expects a single string pattern argument.", path_segment=component_list_item, full_path_ast=path_ast)
             if i > 0 : result_parts.append(".")
-            current_str = f"~/{args[0]}/"
+            cur_str = f"~/{args[0]}/"
         elif op == "wc_level":
             if args:
                 raise PathSyntaxError(f"'wc_level' operation expects no arguments.", path_segment=component_list_item, full_path_ast=path_ast)
             if i > 0 : result_parts.append(".")
-            current_str = "[*]"
+            cur_str = "[*]"
         elif op == "wc_recursive":
             if args:
                 raise PathSyntaxError(f"'wc_recursive' operation expects no arguments.", path_segment=component_list_item, full_path_ast=path_ast)
             if i > 0 : result_parts.append(".")
-            current_str = "**"
+            cur_str = "**"
         elif op == "root":
             if args:
                 raise PathSyntaxError(f"'root' operation expects no arguments.", path_segment=component_list_item, full_path_ast=path_ast)
             if i > 0 : result_parts.append(".")
-            current_str = "#" # Using '#' to represent the root operator
+            cur_str = "#" # Using '#' to represent the root operator
         else:
             raise PathSyntaxError(f"Unknown JAF path component operation: '{op}'", path_segment=component_list_item, full_path_ast=path_ast)
 
-        result_parts.append(current_str)
+        result_parts.append(cur_str)
 
     return "".join(result_parts)
 
