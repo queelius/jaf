@@ -1,0 +1,32 @@
+name: Deploy MkDocs to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main # Or your default branch, e.g., master
+
+permissions:
+  contents: write # Needed to push to the gh-pages branch
+
+jobs:
+  deploy:
+    name: Deploy documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11' # Match your project's Python version
+
+      - name: Install dependencies
+        run: |
+          pip install mkdocs mkdocs-material pymdown-extensions
+
+      - name: Deploy to GitHub Pages
+        run: mkdocs gh-deploy --force --config-file mkdocs.yml
+        # The --config-file might be redundant if mkdocs.yml is at the root,
+        # but being explicit is good practice.
+        # Ensure your GitHub repository settings are configured to serve Pages from the `gh-pages` branch.
