@@ -1,7 +1,8 @@
 import unittest
 import re
-from jaf.path_utils import eval_path, PathValues
-from jaf.path_conversion import PathSyntaxError
+from jaf.path_evaluation import eval_path
+from jaf.path_types import PathValues
+from jaf.path_exceptions import PathSyntaxError
 
 
 class TestRegexKeyWithFlags(unittest.TestCase):

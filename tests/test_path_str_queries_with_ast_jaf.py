@@ -1,6 +1,6 @@
 import unittest
 from jaf.jaf_eval import jaf_eval, jafError
-from jaf.path_conversion import PathSyntaxError
+from jaf.path_exceptions import PathSyntaxError
 
 
 class TestJafEvalPathStrings(unittest.TestCase):

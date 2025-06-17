@@ -39,7 +39,7 @@ def adapt_jaf_operator(n: int, func: callable) -> tuple[callable, int]:
     :param func: The Python function to adapt.
     :return: A tuple containing the wrapped function and `n`.
     """
-    from .path_utils import PathValues
+    from .path_types import PathValues
 
     def wrapper(*args, obj): # These `args` are already evaluated by jaf_eval
         func_name = func.__name__ if hasattr(func, '__name__') else 'lambda'

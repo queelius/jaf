@@ -1,7 +1,9 @@
 import unittest
 from unittest.mock import patch
-from jaf.path_utils import eval_path, PathValues, _fuzzy_match_keys
-from jaf.path_conversion import PathSyntaxError
+from jaf.path_evaluation import eval_path
+from jaf.path_operations import _fuzzy_match_keys
+from jaf.path_types import PathValues
+from jaf.path_exceptions import PathSyntaxError
 
 
 class TestFuzzyKey(unittest.TestCase):
@@ -188,7 +190,7 @@ class TestFuzzyKey(unittest.TestCase):
         matches = _fuzzy_match_keys("xyz", keys, 0.9, "difflib")
         self.assertEqual(len(matches), 0)
 
-    @patch('jaf.path_utils.logger')
+    @patch('jaf.path_evaluation.logger')
     def test_fuzzy_key_library_fallback(self, mock_logger):
         """Test fallback behavior when specialized libraries are not available"""
         # This would test the ImportError handling, but since we can't easily

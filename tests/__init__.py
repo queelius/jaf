@@ -13,7 +13,7 @@ __all__ = [
     "test_new",
     "test_integration",
     "test_builtins",
-    "test_path_utils",
+    "test_path_evaluation",
     "test_console_script",
     "test_result_set"
 ]

@@ -1,8 +1,10 @@
 from .jaf import jaf, jafError
 from .jaf_eval import jaf_eval
-from .path_utils import eval_path, exists, PathValues
+from .path_evaluation import eval_path, exists
+from .path_types import PathValues
+from .path_exceptions import PathSyntaxError
+from .path_conversion import path_ast_to_string, string_to_path_ast
 from .result_set import JafResultSet, JafResultSetError
-from .path_conversion import PathSyntaxError, path_ast_to_string, string_to_path_ast
 
 __all__ = [
     "jaf", 

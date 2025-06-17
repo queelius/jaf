@@ -2,9 +2,11 @@ import datetime
 import re
 import rapidfuzz
 import logging
-from .path_utils import exists, eval_path, PathValues
+from .path_evaluation import exists, eval_path
+from .path_types import PathValues
 from .utils import adapt_jaf_operator
-from .path_conversion import string_to_path_ast, PathSyntaxError
+from .path_conversion import string_to_path_ast
+from .path_exceptions import PathSyntaxError
 
 # Set up the logger
 logger = logging.getLogger(__name__)

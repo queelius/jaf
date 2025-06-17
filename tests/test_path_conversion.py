@@ -1,5 +1,6 @@
 import unittest
-from jaf.path_conversion import path_ast_to_string, PathSyntaxError, string_to_path_ast
+from jaf.path_conversion import path_ast_to_string, string_to_path_ast
+from jaf.path_exceptions import PathSyntaxError
 
 class TestPathAstToString(unittest.TestCase):
 
