@@ -278,7 +278,7 @@ class TestPathSystem:
             eval_path([[123, "arg"]], self.nested_data) # type: ignore
         
         # These internal errors are caught by _match_recursive
-        with pytest.raises(PathSyntaxError, match="Unknown path operation code encountered: 'unknown_op'"):
+        with pytest.raises(PathSyntaxError, match="Unknown path operation: 'unknown_op'"):
             eval_path([["unknown_op", "arg"]], self.nested_data)
         
         with pytest.raises(PathSyntaxError, match="'key' operation expects a single string argument."):
