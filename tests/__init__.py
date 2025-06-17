@@ -14,5 +14,6 @@ __all__ = [
     "test_integration",
     "test_builtins",
     "test_path_utils",
-    "test_console_script"
+    "test_console_script",
+    "test_result_set"
 ]

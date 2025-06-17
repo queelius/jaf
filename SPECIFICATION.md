@@ -91,16 +91,29 @@ Each component in the `path_components_list` is a list itself, where the first e
     *   Returns a list of values from matching keys.
     *   Example: `[["regex_key", "^error_\\d+$"]]` accesses values for keys like "error_1", "error_2", etc. (Note: `\` in regex might need escaping depending on the string representation in the query).
 
-6.  `["wc_level"]` (Wildcard - Current Level)
+6.  `["fuzzy_key", <target_key_string> [, <cutoff_float> [, <algorithm_string>]]]`
+    *   Accesses object properties where keys are similar to the target key using fuzzy string matching.
+    *   **Arguments**:
+        *   `target_key_string`: The key name to search for (required string).
+        *   `cutoff_float`: Minimum similarity score between 0.0 and 1.0 (optional, default: 0.6).
+        *   `algorithm_string`: Matching algorithm (optional, default: "difflib"). Supported: "difflib", "levenshtein", "jaro_winkler", "soundex", "metaphone".
+    *   **Behavior**: Returns a list of values from keys that meet the similarity threshold, sorted by similarity (best matches first). Exact matches are prioritized.
+    *   **Library Dependencies**: Some algorithms require optional libraries (Levenshtein, jellyfish). Falls back to difflib if libraries are unavailable.
+    *   **Examples**: 
+        *   `[["fuzzy_key", "username"]]` might match "user_name", "userName", "usr_nm"
+        *   `[["fuzzy_key", "apikey", 0.8, "levenshtein"]]` uses Levenshtein distance with high precision
+
+7.  `["wc_level"]` (Wildcard - Current Level)
     *   Matches any single field name or array index at the current level of the object or array.
     *   **Motivation**: Useful for iterating over elements of a list or values of a dictionary when the keys/indices are not known beforehand, or when an operation needs to be applied to all direct children.
     *   Example: `[["key", "tasks"], ["wc_level"], ["key", "status"]]` accesses the "status" of each task in the "tasks" list.
 
-7.  `["wc_recursive"]` (Wildcard - Recursive Descent)
+8.  `["wc_recursive"]` (Wildcard - Recursive Descent)
     *   Matches any field name recursively at any depth within the current object structure. It also considers the current level for matches if the subsequent path parts align.
     *   **Motivation**: Essential for deep searches where the target data might be nested at varying or unknown depths.
     *   Example: `[["wc_recursive"], ["key", "error_code"]]` finds any "error_code" field anywhere in the object.
-8.  `["root"]`
+
+9.  `["root"]`
     *   Represents the root of the object against which the entire path expression is being evaluated.
     *   Allows paths to "restart" or reference from the top-level object, even if the current evaluation context is nested due to prior path components.
     *   Example: `[["key", "user"], ["root"], ["key", "config"]]` - if `obj` is `{"user": {"name": "A"}, "config": {"setting": "X"}}`, this path would first go to `obj["user"]`, then `["root"]` would reset the context to `obj`, and `["key", "config"]` would access `obj["config"]`.

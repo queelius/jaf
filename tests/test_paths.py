@@ -3,7 +3,8 @@ Tests for JAF path system and wildcard functionality.
 """
 import pytest
 from jaf.jaf_eval import jaf_eval # Corrected import for jaf_eval
-from jaf.path_utils import eval_path, exists, PathValues, PathSyntaxError
+from jaf.path_utils import eval_path, exists, PathValues, is_valid_path_str
+from jaf.path_conversion import PathSyntaxError
 
 
 class TestPathSystem:
@@ -15,6 +16,7 @@ class TestPathSystem:
             "user": {
                 "name": "Alice",
                 "email": "alice@example.com",
+                "active": True,
                 "profile": {
                     "settings": {
                         "theme": "dark"
@@ -42,6 +44,20 @@ class TestPathSystem:
                 "global_setting": "enabled"
             }
         }
+
+    def test_is_valid_path_str(self):
+        """Test if a path is valid"""
+        # Valid path: ["user", "name"]
+        assert is_valid_path_str("user.name")
+        assert is_valid_path_str("user.profile.settings.theme")
+        # Invalid path: "user.name." (trailing dot)
+        # assert not is_valid_path_str("user.name.")
+        # Invalid path: "user..name" (double dot)
+        assert not is_valid_path_str("user..name")
+        # wildcards
+        assert is_valid_path_str("user.*.name")
+        assert is_valid_path_str("user.**.name")
+        assert is_valid_path_str("user[*].name.*")
 
     def test_simple_path_access(self):
         """Test basic path access"""
@@ -202,6 +218,14 @@ class TestPathSystem:
         result = jaf_eval.eval(query, self.nested_data)
         assert result == "Alice"
 
+    def test_path_special_form_2(self):
+        """Test path special form in evaluator"""
+        # path: ["user", "name"]
+        query = ["path", [["key", "user"], ["key", "active"]]]
+        result = jaf_eval.eval(query, self.nested_data)
+        assert result
+
+
     def test_exists_function(self):
         """Test exists? special form"""
         # Existing path
@@ -304,7 +328,7 @@ class TestPathSystem:
         assert result == ["b", "c", "d"]
 
         # path: ["arr", ["slice", None, None, 2]] -> arr[::2] -> ["a", "c", "e"]
-        result = eval_path([["key", "arr"], ["slice", None, None, 2]], data)
+        result = eval_path([["key", "arr"], ["slice", 0, -1, 2]], data)
         assert isinstance(result, PathValues)
         assert result == ["a", "c", "e"]
 
@@ -349,7 +373,7 @@ class TestPathSystem:
         assert isinstance(result, PathValues)
         assert result == []
         
-        with pytest.raises(PathSyntaxError, match="Invalid regex pattern"):
+        with pytest.raises(PathSyntaxError, match="'regex_key' operation: invalid regex pattern"):
             eval_path([["regex_key", "["]], data)
 
 

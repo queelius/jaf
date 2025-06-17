@@ -55,6 +55,11 @@ At the heart of data access in JAF is its Path System. This system can be though
 - `["indices", [<int_idx1>, ...]]`: Accesses multiple array elements by specific indices.
 - `["slice", <start_or_null>, <stop_or_null>, <step_or_null>]`: Accesses a slice of an array (Python-like slicing, `null` can be used for defaults, e.g., `null` for `start` means from the beginning, `null` for `stop` means till the end, `null` for `step` means `1`).
 - `["regex_key", <pattern_string>]`: Accesses object properties where keys match a regex.
+- `["fuzzy_key", <target_key>, <cutoff?>, <algorithm?>]`: Accesses object properties where keys are similar to the target key using fuzzy matching.
+  - `target_key`: The key to search for (string)
+  - `cutoff`: Minimum similarity score 0.0-1.0 (default: 0.6)
+  - `algorithm`: Matching algorithm - "difflib" (default), "levenshtein", "jaro_winkler", "soundex", "metaphone"
+  - Example: `[["fuzzy_key", "username", 0.7]]` matches keys like "user_name", "userName", "usr_nm"
 - `["wc_level"]`: Wildcard for the current level.
   - Example: `[["key", "items"], ["wc_level"], ["key", "name"]]` (gets all names from items)
 - `["wc_recursive"]`: Recursive wildcard.

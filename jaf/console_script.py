@@ -29,7 +29,7 @@ def main():
     parser.add_argument(
         "--drop-filenames",
         action="store_true",
-        help="For boolean operations, omit 'filenames_in_collection' from the output JafResultSet JSON."
+        help="Omit 'filenames_in_collection' from the output."
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True, help="Sub-command to execute")

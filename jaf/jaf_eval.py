@@ -4,6 +4,7 @@ import rapidfuzz
 import logging
 from .path_utils import exists, eval_path, PathValues
 from .utils import adapt_jaf_operator
+from .path_conversion import string_to_path_ast, PathSyntaxError
 
 # Set up the logger
 logger = logging.getLogger(__name__)
@@ -98,8 +99,16 @@ class jaf_eval:
             if len(args) != 1:
                 raise ValueError(f"'path' expects 1 argument, got {len(args)}")
             path_expr = args[0]
+            
+            if isinstance(path_expr, str):
+                path_expr_ast = string_to_path_ast(path_expr)
+                if not path_expr_ast:
+                    raise ValueError("Invalid path expression: empty or malformed")
+                print(f"Converted path string {path_expr} to AST: {path_expr_ast}")
+                path_expr = path_expr_ast
+                
             if not isinstance(path_expr, list):
-                raise ValueError("path argument must be a list of path components")
+               raise ValueError("path argument must be a list of path components")
 
             # Validate each component of the path expression
             known_path_ops = {"key", "index", "indices", "slice", "regex_key", "wc_level", "wc_recursive"}
@@ -113,7 +122,9 @@ class jaf_eval:
                 if component[0] not in known_path_ops:
                     raise ValueError(f"Unknown path operation: {component[0]}")
             
-            return eval_path(path_expr, obj)
+            res = eval_path(path_expr, obj)
+            print(f"Evaluated path expression {path_expr} against object: {obj} -> Result: {res}")
+            return res
         
         elif op == 'exists?':
             if len(args) != 1:
@@ -124,6 +135,12 @@ class jaf_eval:
             if isinstance(arg, list) and len(arg) == 2 and arg[0] == "path":
                 # Extract the path components directly
                 path_components = arg[1]
+
+                if isinstance(path_components, str):
+                    # Convert string path to AST
+                    path_components = string_to_path_ast(path_components)
+                    if not path_components:
+                        raise ValueError("Invalid path expression: empty or malformed")
                 if not isinstance(path_components, list):
                     raise ValueError("path argument must be a list of path components")
                 return exists(path_components, obj)
