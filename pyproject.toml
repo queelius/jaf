@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jaf"
-version = "0.5.0"
+version = "0.5.1"
 description = "JSON Array Filter (jaf) is a versatile filter for JSON arrays. It is a domain-specific language (DSL) that allows you to filter JSON arrays using a simple, yet powerful syntax. Programmatically, the AST can be used to filter JSON arrays in a more flexible way."
 authors = [
     { name = "Alex Towell", email = "lex@metafunctor.com" }

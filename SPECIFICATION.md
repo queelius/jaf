@@ -1,4 +1,4 @@
-# JAF (JSON Array Filter) - Specification v1.1
+# JAF (JSON Array Filter) - Specification v1.2
 
 ## Overview
 
@@ -46,16 +46,84 @@ Queries use S-expression syntax: `[operator, arg1, arg2, ...]`
 **Examples**:
 
 ```python
+# Traditional path syntax
 ["eq?", ["path", [["key", "name"]]], "John"]
 ["and", 
   ["exists?", ["path", [["key", "email"]]]], 
   ["gt?", ["length", ["path", [["key", "items"]]]], 5]
 ]
+
+# With @ special path notation (concise)
+["eq?", "@name", "John"]
+["and", 
+  ["exists?", "@email"], 
+  ["gt?", ["length", "@items"], 5]
+]
 ```
+
+## @ Special Path Notation
+
+JAF provides a concise `@` syntax as an alternative to the explicit `["path", ...]` form. This notation significantly reduces verbosity while maintaining full compatibility with the path system.
+
+**Syntax Forms:**
+
+1. **String Format**: `"@path.expression"`
+   - Most concise form for simple path access
+   - Example: `"@user.name"`, `"@items.*.status"`, `"@data[0].value"`
+
+2. **Explicit AST with String**: `["@", "path.expression"]`
+   - Explicit operator form using string path
+   - Example: `["@", "user.name"]`
+
+3. **Explicit AST with Path Components**: `["@", path_components_list]`
+   - Explicit operator form using tagged path components
+   - Example: `["@", [["key", "user"], ["key", "name"]]]`
+
+**Equivalence:**
+
+All three forms are functionally equivalent to the traditional `["path", ...]` syntax:
+
+```python
+# These are all equivalent:
+"@user.name"                                    # Concise string format
+["@", "user.name"]                              # Explicit with string
+["@", [["key", "user"], ["key", "name"]]]       # Explicit with AST
+["path", "user.name"]                           # Traditional with string
+["path", [["key", "user"], ["key", "name"]]]    # Traditional with AST
+```
+
+**Usage in Queries:**
+
+```python
+# Simple equality with @ syntax
+["eq?", "@status", "active"]
+
+# Complex conditions
+["and", 
+  ["eq?", "@user.status", "active"],
+  ["in?", "dev", "@user.tags"],
+  ["gt?", "@user.score", 100]]
+
+# Existence checks
+["exists?", "@user.profile.settings"]
+
+# With wildcards and advanced path features
+["eq?", "@projects.*.status", "completed"]
+["gt?", "@items[0].price", 50]
+["exists?", "@logs.*.error"]
+```
+
+**Benefits:**
+
+- **Conciseness**: `"@user.name"` vs `["path", "user.name"]`
+- **Readability**: Reduces visual clutter in complex queries
+- **Familiarity**: `@` is commonly used for references in many languages
+- **Full Compatibility**: Works with all path features (wildcards, indexing, etc.)
+- **Coexistence**: Traditional `["path", ...]` syntax remains fully supported
 
 ## Path System
 
-The JAF Path System is a small, dedicated sub-language for data traversal within JSON objects. Paths are **lists of tagged components** used within the `["path", path_components_list]` special form. This tagged structure (its own AST) provides a uniform and explicit way to define how to traverse the JSON data.
+The JAF Path System is a small, dedicated sub-language for data traversal within JSON objects. Paths are **lists of tagged components** used within the `["path", path_components_list]` special form or the `@` notation. This tagged structure (its own AST) provides a uniform and explicit way to define how to traverse the JSON data.
 
 Each component in the `path_components_list` is a list itself, where the first element is a tag (string) indicating the type of path segment, and subsequent elements are arguments for that segment type.
 
@@ -120,53 +188,60 @@ Each component in the `path_components_list` is a list itself, where the first e
 
 **Path Evaluation (`eval_path` function):**
 
-The `eval_path(obj, path_components_list)` function (internally used by the `["path", ...]` special form) evaluates the given path against the `obj`.
+The `eval_path(obj, path_components_list)` function (internally used by both the `["path", ...]` special form and `@` notation) evaluates the given path against the `obj`.
 
 - **Return Value**:
     - If the path does not contain multi-match components (i.e., only uses `["key", ...]` or `["index", ...]`) and successfully resolves to a single, definite value, that value is returned directly. This includes `None` if the field exists and its value is `null`.
     - If the path involves components that can naturally yield multiple values (e.g., `["indices", ...]`, `["slice", ...]`, `["regex_key", ...]`, `["wc_level"]`, `["wc_recursive"]`), `eval_path` returns a `PathValues` object. `PathValues` is a specialized list subclass that holds the collection of all values found by the path. It preserves the order of discovery and can contain duplicates if the data and path logic lead to them. It offers convenience methods for accessing its contents (e.g., `first()`, `one()`).
     - If a path that does *not* contain multi-match components fails to resolve at any point (e.g., a key not found, an index out of bounds for a specific index access), `eval_path` returns an empty list `[]`. This signifies "not found" or "no value" for a specific path.
     - If a path *with* multi-match components finds no values, it returns an empty `PathValues` object (e.g., `PathValues([])`). This is distinct from the `[]` returned for a specific path not found.
-    - If the `path_components_list` is empty (e.g., `["path", []]`), `eval_path` returns the original `obj`.
+    - If the `path_components_list` is empty (e.g., `["path", []]` or `["@", ""]`), `eval_path` returns the original `obj`.
     - In rare cases where a path *without* multi-match components unexpectedly yields multiple distinct results, `eval_path` may also wrap these results in a `PathValues` object with a warning.
 
 **Examples of Path Syntax:**
 
 ```python
-# Access a top-level key:
-["path", [["key", "name"]]]
+# Traditional syntax:
+["path", [["key", "name"]]]                    # Access a top-level key
+["path", [["key", "user"], ["key", "email"]]]  # Access a nested key
+["path", [["key", "items"], ["wc_level"], ["key", "status"]]]  # Wildcard access
 
-# Access a nested key:
-["path", [["key", "user"], ["key", "email"]]]
+# With @ syntax (equivalent):
+"@name"                     # Access a top-level key
+"@user.email"               # Access a nested key  
+"@items.*.status"           # Wildcard access
 
-# Access all "status" fields from items in a list:
-["path", [["key", "items"], ["wc_level"], ["key", "status"]]]
+# Array operations:
+["path", [["key", "data"], ["index", 0], ["key", "value"]]]    # Traditional
+"@data[0].value"                                               # @ syntax
 
-# Access an element by index:
-["path", [["key", "data"], ["index", 0], ["key", "value"]]]
+# Complex path operations:
+["path", [["key", "measurements"], ["slice", 10, 20, null]]]   # Traditional
+"@measurements[10:20]"                                         # @ syntax
 
-# Access elements via slice:
-["path", [["key", "measurements"], ["slice", 10, 20, null]]]
+# Multiple indices:
+["path", [["key", "users"], ["indices", [1, 3, 5]]]]          # Traditional
+"@users[1,3,5]"                                                # @ syntax
 
-# Access elements via specific indices:
-["path", [["key", "users"], ["indices", [1, 3, 5]]]]
-
-# Access elements via regex on keys:
-["path", [["key", "logs"], ["regex_key", "session_\\w+"]]]
+# Regex matching:
+["path", [["key", "logs"], ["regex_key", "session_\\w+"]]]     # Traditional
+# (@ syntax uses the same string path format for regex patterns)
 ```
 
-**Behavior of the `["path", ...]` special form:**
+**Behavior of Path Special Forms:**
 
-- When the `["path", ...]` form is evaluated, it internally calls `eval_path` with the current object and the provided `path_components_list`.
-- The result of `eval_path` (a single value, `None`, `[]`, or a `PathValues` list) is then used as the value of the `["path", ...]` expression in the broader JAF query.
+- When `["path", ...]` or `@` forms are evaluated, they internally call `eval_path` with the current object and the provided path specification.
+- The result of `eval_path` (a single value, `None`, `[]`, or a `PathValues` list) is then used as the value of the path expression in the broader JAF query.
 
 ## Operator Categories
 
 ### 1. Special Forms (Custom Evaluation)
 
 - `path` - Extract values: `["path", [["key", "field"], ["key", "subfield"]]]`
-- `exists?` - Check existence: `["exists?", ["path", [["key", "field"]]]]`
-  - `exists?` returns `true` if `eval_path` for the given path components returns anything other than an empty list `[]` (when the path is specific and not found) or an empty `PathValues` (when the path is multi-match and not found). A path to a `null` value *does* exist and `exists?` will return `true`.
+- `@` - Concise path notation: `"@field.subfield"` or `["@", path_expr]`
+- `exists?` - Check existence: `["exists?", path_expr]`
+  - `exists?` returns `true` if `eval_path` for the given path expression returns anything other than an empty list `[]` (when the path is specific and not found) or an empty `PathValues` (when the path is multi-match and not found). A path to a `null` value *does* exist and `exists?` will return `true`.
+  - Works with both traditional and `@` syntax: `["exists?", ["path", "user.email"]]` or `["exists?", "@user.email"]`
 - `if` - Conditional: `["if", condition, true-expr, false-expr]`
 - `and` - Logical AND with short-circuit: `["and", expr1, expr2, ...]`
 - `or` - Logical OR with short-circuit: `["or", expr1, expr2, ...]`
@@ -209,9 +284,15 @@ All functions follow this pattern:
 **Examples**:
 
 ```python
+# Traditional syntax:
 ["eq?", ["path", [["key", "name"]]], "John"]                    # name == "John"
 ["gt?", ["length", ["path", [["key", "items"]]]], 5]            # len(items) > 5  
 ["starts-with?", ["lower-case", ["path", [["key", "email"]]]], "admin"]  # email.lower().startswith("admin")
+
+# With @ syntax (more concise):
+["eq?", "@name", "John"]                                        # name == "John"
+["gt?", ["length", "@items"], 5]                                # len(items) > 5
+["starts-with?", ["lower-case", "@email"], "admin"]             # email.lower().startswith("admin")
 ```
 
 ## Evaluation Rules
@@ -227,6 +308,7 @@ All functions follow this pattern:
 
 - Evaluated with custom logic (don't evaluate all args first).
 - Handle control flow and path access.
+- Both `path` and `@` are special forms that handle path evaluation.
 
 ### 3. Regular Functions (Predicates and Value Extractors)
 
@@ -235,7 +317,7 @@ All functions follow this pattern:
 
 ### 4. `PathValues` in Predicates and Functions (Interaction with `adapt_jaf_operator`)
 
-When a `PathValues` object (the result of a `["path", ...]` expression involving components like `wc_level`, `wc_recursive`, `indices`, `slice`, or `regex_key`) is used as an argument to a predicate or a value-transforming function, JAF (via the `adapt_jaf_operator` utility) employs a specific evaluation strategy. `PathValues` represents the collection of all values found by such a path.
+When a `PathValues` object (the result of a path expression involving components like `wc_level`, `wc_recursive`, `indices`, `slice`, or `regex_key`) is used as an argument to a predicate or a value-transforming function, JAF (via the `adapt_jaf_operator` utility) employs a specific evaluation strategy. `PathValues` represents the collection of all values found by such a path.
 
 **a. Argument Expansion (Cartesian Product):**
 
@@ -248,8 +330,8 @@ When a `PathValues` object (the result of a `["path", ...]` expression involving
 - If the function being called is a **predicate** (typically its name ends with `?`):
   - The predicate evaluates to `true` if **there exists at least one combination** of expanded arguments for which the predicate's condition holds.
   - If all combinations evaluate to `false`, or if any `PathValues` argument was initially empty (resulting in no combinations to test), the overall predicate evaluates to `false`.
-  - **Example**: `["eq?", ["path", [["key", "items"], ["wc_level"], ["key", "status"]]], "completed"]`.
-    Let `S = eval_path(obj, [["key", "items"], ["wc_level"], ["key", "status"]]])`. The predicate is true if ∃ *s* ∈ `S` such that `eq?(s, "completed")` is true.
+  - **Example**: `["eq?", ["path", [["key", "items"], ["wc_level"], ["key", "status"]]], "completed"]` or `["eq?", "@items.*.status", "completed"]`.
+    Let `S = eval_path(obj, path_expr_for_items_status)`. The predicate is true if ∃ *s* ∈ `S` such that `eq?(s, "completed")` is true.
   - Type errors or attribute errors encountered during the evaluation of a specific combination for a predicate cause that particular combination to yield `false`. The overall predicate can still be `true` if another combination succeeds.
 
 **c. Value Extractor/Transformer Evaluation:**
@@ -265,7 +347,7 @@ When a `PathValues` object (the result of a `["path", ...]` expression involving
 
 **d. Universal Quantification (`∀`) and `path`:**
 
-- The `path` operator itself is designed for *data extraction* – it gathers all values that match a given path. It does not inherently perform universal quantification ("for all").
+- The `path` operator (and `@` notation) itself is designed for *data extraction* – it gathers all values that match a given path. It does not inherently perform universal quantification ("for all").
 - Universal quantification is a *checking* operation. While not directly supported by `path`, such checks can often be constructed using negation and existential quantification (e.g., "it is NOT true that there EXISTS an item that does NOT satisfy the condition"). For example, to check if all items in a list have `status == "active"`: `["not", ["in?", false, ["map", ["lambda", "x", ["eq?", ["path", [["key", "x"], ["key", "status"]]], "active"]], ["path", [["key", "items"]]]]]]` (assuming a hypothetical `map` and `lambda` for illustration; JAF does not have these directly but similar logic can be built with `and`/`or` over known items or by checking for the non-existence of a counter-example). A simpler approach for "all items satisfy X" is often "NOT (EXISTS item that does NOT satisfy X)".
 
 ## Boolean Algebra on Result Sets
@@ -336,7 +418,13 @@ The `JafResultSet` class provides a method to retrieve the original data objects
 - Non-existent specific paths (key not found, index out of bounds for specific index access) result in `eval_path` returning `[]` (empty list).
 - A multi-match path that finds no values results in `eval_path` returning an empty `PathValues` object.
 - A path to a field that exists but has a `null` value will result in `eval_path` returning `None` (if it's a specific path resolving to that `null`).
-- Use `exists?` to check path existence. `exists?` returns `true` if `eval_path` for the given path components returns anything other than an empty list `[]` (when the path is specific and not found) or an empty `PathValues` (when the path is multi-match and not found). A path to a `null` value *does* exist and `exists?` will return `true`.
+- Use `exists?` to check path existence. `exists?` returns `true` if `eval_path` for the given path expression returns anything other than an empty list `[]` (when the path is specific and not found) or an empty `PathValues` (when the path is multi-match and not found). A path to a `null` value *does* exist and `exists?` will return `true`.
+
+### @ Notation Errors
+
+- Empty `@` expressions (e.g., `"@"`) raise `PathSyntaxError`.
+- Invalid path syntax in `@` expressions (e.g., `"@[invalid"`) raise `PathSyntaxError` with details about the syntax error.
+- Wrong argument count for the `@` operator (when used as `["@", ...]`) raises `ValueError`.
 
 ### Type Errors
 
@@ -353,45 +441,88 @@ The `JafResultSet` class provides a method to retrieve the original data objects
 ### Basic Filtering
 
 ```python
-# Find objects where name is "John"
+# Traditional syntax:
 ["eq?", ["path", [["key", "name"]]], "John"]
-
-# Find objects with more than 5 items
 ["gt?", ["length", ["path", [["key", "items"]]]], 5]
+
+# With @ syntax (more concise):
+["eq?", "@name", "John"]
+["gt?", ["length", "@items"], 5]
 ```
 
 ### Complex Conditions
 
 ```python
-# Active users with email addresses
+# Traditional syntax:
 ["and", 
   ["eq?", ["path", [["key", "active"]]], true],
   ["exists?", ["path", [["key", "email"]]]]
 ]
 
-# Case-insensitive language check
-["eq?", ["lower-case", ["path", [["key", "language"]]]], "python"]
+# With @ syntax:
+["and", 
+  ["eq?", "@active", true],
+  ["exists?", "@email"]
+]
+
+# Case-insensitive language check with @ syntax:
+["eq?", ["lower-case", "@language"], "python"]
 ```
 
 ### Path System Examples
 
 ```python
-# Any item in "items" list has status "completed"  
+# Traditional syntax vs @ syntax comparisons:
+
+# Any item in "items" list has status "completed"
 ["eq?", ["path", [["key", "items"], ["wc_level"], ["key", "status"]]], "completed"]
+["eq?", "@items.*.status", "completed"]  # @ syntax
 
 # Deep search for any "error" field that exists
 ["exists?", ["path", [["wc_recursive"], ["key", "error"]]]]
+["exists?", "@**.error"]  # @ syntax (if recursive wildcard syntax supported)
 
 # Get names of users at specific indices 0 and 2
-# (This path would likely be used with a function that can handle a list of names,
-# or in a context where multiple names are expected)
-["path", [["key", "users"], ["indices", [0, 2]], ["key", "name"]]] 
+["path", [["key", "users"], ["indices", [0, 2]], ["key", "name"]]]
+"@users[0,2].name"  # @ syntax
 
 # Check if any log entry with a key matching "event_.*" has a "level" of "critical"
 ["eq?", ["path", [["regex_key", "event_.*"], ["key", "level"]]], "critical"]
 
 # Check if the first three tags include "urgent"
 ["in?", "urgent", ["path", [["key", "tags"], ["slice", null, 3, null]]]]
+["in?", "urgent", "@tags[:3]"]  # @ syntax
+
+# Mixed usage - both syntaxes in same query:
+["and",
+  ["eq?", "@status", "active"],                    # @ syntax
+  ["gt?", ["length", ["path", [["key", "items"]]]], 0]  # traditional syntax
+]
+```
+
+### Advanced @ Syntax Examples
+
+```python
+# Complex nested access:
+["eq?", "@user.profile.settings.theme", "dark"]
+
+# Array indexing:
+["gt?", "@scores[0]", 85]
+["eq?", "@data[-1].status", "final"]
+
+# Wildcard operations:
+["exists?", "@projects.*.deadline"]
+["in?", "urgent", "@tasks.*.priority"]
+
+# Existence checks:
+["exists?", "@user.preferences.notifications"]
+["not", ["exists?", "@temp_data"]]
+
+# In complex boolean expressions:
+["or",
+  ["and", ["eq?", "@status", "active"], ["gt?", "@score", 90]],
+  ["and", ["eq?", "@status", "trial"], ["gt?", "@score", 95]]
+]
 ```
 
 ## Design Constraints
@@ -401,5 +532,6 @@ The `JafResultSet` class provides a method to retrieve the original data objects
 3. **Tagged AST Paths**: Uniform, explicit path component representation.
 4. **Predictable Performance**: All operations have bounded execution time relative to data size and path complexity.
 5. **Boolean Results for Filtering**: Top-level queries (or conditions in `if`, `and`, `or`) must resolve to boolean values for filtering.
+6. **Syntax Coexistence**: The `@` notation coexists with traditional `["path", ...]` syntax, maintaining full backward compatibility.
 
-This specification defines a minimal, focused JSON filtering language that's powerful enough for real-world use cases while remaining simple and predictable. The path system, with its tagged AST, enhances its explicitness and maintainability. The `JafResultSet` provides a robust mechanism for working with and combining filter results.
+This specification defines a minimal, focused JSON filtering language that's powerful enough for real-world use cases while remaining simple and predictable. The path system, with its tagged AST and concise `@` notation, enhances both explicitness and readability. The `JafResultSet` provides a robust mechanism for working with and combining filter results.

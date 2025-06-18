@@ -33,12 +33,46 @@ JAF queries use an S-expression syntax (nested lists):
 # Find objects where name is "John"
 ["eq?", ["path", [["key", "name"]]], "John"]
 
+# With @ syntax (concise path notation)
+["eq?", "@name", "John"]
+
 # Find objects where email exists AND stars are greater than 100
 ["and", 
   ["exists?", ["path", [["key", "email"]]]], 
   ["gt?", ["path", [["key", "stars"]]], 100]
 ]
+
+# With @ syntax
+["and", 
+  ["exists?", "@email"], 
+  ["gt?", "@stars", 100]
+]
 ```
+
+## @ Special Path Notation
+
+JAF provides a concise `@` syntax for path operations:
+
+- **`@path.string`**: Direct string format for simple path access
+- **`["@", "path.string"]`**: Explicit AST form with string path
+- **`["@", path_ast]`**: Explicit AST form with path component list
+
+**Examples**:
+```python
+# These are all equivalent:
+"@user.name"                                    # Concise string format
+["@", "user.name"]                              # Explicit with string
+["@", [["key", "user"], ["key", "name"]]]       # Explicit with AST
+["path", "user.name"]                           # Traditional syntax
+["path", [["key", "user"], ["key", "name"]]]    # Traditional with AST
+
+# Usage in queries:
+["eq?", "@user.status", "active"]               # Simple equality
+["exists?", "@user.profile.settings"]           # Existence check
+["gt?", "@items.*.price", 100]                  # Wildcard with comparison
+```
+
+The `@` syntax works with all path features including wildcards, array indexing, and complex navigation.
 
 (A human-readable DSL format may be a planned feature but is not part of the core AST evaluation.)
 
@@ -69,7 +103,7 @@ At the heart of data access in JAF is its Path System. This system can be though
 
 **Path Evaluation (`eval_path`):**
 
-The `["path", path_components_list]` special form uses an internal `eval_path` function to resolve these path expressions against a JSON object.
+The `["path", path_components_list]` special form (and `@` syntax) uses an internal `eval_path` function to resolve these path expressions against a JSON object.
 
 - **Single Value**: If a path that does not contain multi-match components (like wildcards or slices) resolves to one specific value (including `null`), that value is returned directly.
 - **Multiple Values (`PathValues`)**: If a path uses components that can naturally yield multiple results (e.g., `indices`, `slice`, `regex_key`, `wc_level`, or `wc_recursive`), it returns a `PathValues` object. `PathValues` is a specialized list subclass that holds the collection of all values found by the path. It preserves the order of discovery and can contain duplicates if the data and path logic lead to them. It also provides convenience methods like `first()`, `one()`, etc.
@@ -84,6 +118,7 @@ When a path expression results in a `PathValues` object (due to wildcards, slice
 - The predicate is `true` if **at least one** value (or combination of values, if multiple such paths are arguments) from the `PathValues` collection satisfies the predicate.
 - Example: `["eq?", ["path", [["key", "projects"], ["wc_level"], ["key", "status"]]], "completed"]`
   This is true if *any* project has its status as "completed".
+- With `@` syntax: `["eq?", "@projects.*.status", "completed"]`
 
 This "any match is sufficient" behavior (existential quantification) is intuitive for filtering. Universal quantification ("for all items to match") can often be constructed using negation and existential checks.
 
@@ -92,11 +127,12 @@ This "any match is sufficient" behavior (existential quantification) is intuitiv
 ### Special Forms
 
 - `path`: `["path", path_components_list]` - Extracts value(s) using the tagged AST path.
+- `@`: `"@path.string"` or `["@", path_expr]` - Concise path notation (equivalent to `path`).
 - `if`: `["if", condition_expr, true_expr, false_expr]` - Conditional.
 - `and`: `["and", expr1, expr2, ...]` - Logical AND (short-circuiting).
 - `or`: `["or", expr1, expr2, ...]` - Logical OR (short-circuiting).
 - `not`: `["not", expr]` - Logical NOT.
-- `exists?`: `["exists?", ["path", path_components_list]]` - Checks if `eval_path` returns anything other than `[]` (empty list for specific paths not found) or an empty `PathValues` (for multi-match paths not found). A path to `null` *does* exist.
+- `exists?`: `["exists?", path_expr]` - Checks if `eval_path` returns anything other than `[]` (empty list for specific paths not found) or an empty `PathValues` (for multi-match paths not found). A path to `null` *does* exist.
 
 ### Predicates (Return Boolean)
 
@@ -133,11 +169,14 @@ jaf filter <input_source> --query '<query_ast_json_string>' [options]
 
 **Example:**
 ```bash
+# Traditional path syntax
 jaf filter data.jsonl --query '["eq?", ["path", [["key", "status"]]], "active"]'
-# Outputs a JafResultSet JSON
 
-jaf filter data_dir --query '["gt?", ["path", [["key", "count"]]], 10]' --recursive --resolve
-# Outputs matching objects as JSONL from files in data_dir
+# With @ syntax (more concise)
+jaf filter data.jsonl --query '["eq?", "@status", "active"]'
+
+# Complex query with @ syntax
+jaf filter data_dir --query '["and", ["eq?", "@status", "active"], ["gt?", "@count", 10]]' --recursive --resolve
 ```
 
 ### Result Set Operations (Boolean Algebra)
@@ -159,18 +198,16 @@ Inputs can be file paths or `-` for `stdin`.
 
 **Example Workflow:**
 ```bash
-# rs_active.json contains indices of active users
-jaf filter users.jsonl --query '["eq?",["path",[["key","status"]]],"active"]' > rs_active.json
-
-# rs_dev.json contains indices of developers
-jaf filter users.jsonl --query '["in?","dev",["path",[["key","tags"]]]]' > rs_dev.json
+# Using @ syntax for more readable queries
+jaf filter users.jsonl --query '["eq?", "@status", "active"]' > rs_active.json
+jaf filter users.jsonl --query '["in?", "dev", "@tags"]' > rs_dev.json
 
 # Find active developers
 jaf and rs_active.json rs_dev.json > rs_active_devs.json
 
 # Alternatively, using pipes:
-jaf filter users.jsonl --query '["eq?",["path",[["key","status"]]],"active"]' | \
-  jaf and - <(jaf filter users.jsonl --query '["in?","dev",["path",[["key","tags"]]]]') > rs_active_devs_pipe.json
+jaf filter users.jsonl --query '["eq?", "@status", "active"]' | \
+  jaf and - <(jaf filter users.jsonl --query '["in?", "dev", "@tags"]') > rs_active_devs_pipe.json
 ```
 
 ### `jaf resolve`
@@ -215,14 +252,22 @@ data = [
 ]
 
 # Find active developers (status is "active" and "dev" is in tags)
+# Traditional syntax:
 query_active_devs = [
     "and",
     ["eq?", ["path", [["key", "status"]]], "active"],
     ["in?", "dev", ["path", [["key", "tags"]]]]
 ]
 
+# With @ syntax (more concise):
+query_active_devs_at = [
+    "and",
+    ["eq?", "@status", "active"],
+    ["in?", "dev", "@tags"]
+]
+
 # The jaf function returns a JafResultSet instance
-result_set_active_devs: JafResultSet = jaf(data, query_active_devs, collection_id="my_data_v1")
+result_set_active_devs: JafResultSet = jaf(data, query_active_devs_at, collection_id="my_data_v1")
 print(f"Active developers JafResultSet: {result_set_active_devs}")
 print(f"Indices of active developers: {list(result_set_active_devs)}") # Iterate or convert to list
 
@@ -231,7 +276,7 @@ active_dev_objects = [data[i] for i in result_set_active_devs.indices]
 print(f"Active developer objects: {active_dev_objects}")
 
 # Example of using JafResultSet methods (programmatic boolean algebra)
-query_python_users = ["in?", "python", ["path", [["key", "tags"]]]]
+query_python_users = ["in?", "python", "@tags"]  # Using @ syntax
 rs_python: JafResultSet = jaf(data, query_python_users, collection_id="my_data_v1")
 
 # Active Python developers
