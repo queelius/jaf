@@ -73,26 +73,6 @@ class TestFuzzyKey(unittest.TestCase):
                     else:
                         raise
 
-    def test_fuzzy_key_soundex_matching(self):
-        """Test soundex-based fuzzy matching for phonetic similarity"""
-        # Soundex should match phonetically similar words
-        test_data = {
-            "smith": "value1",
-            "smyth": "value2", 
-            "Schmidt": "value3"
-        }
-        
-        try:
-            result = eval_path([["fuzzy_key", "smith", 0.6, "soundex"]], test_data)
-            self.assertIsInstance(result, PathValues)
-            # All three should match as they sound similar
-            self.assertTrue(len(result) >= 2)
-        except Exception as e:
-            if "not available" in str(e):
-                self.skipTest("Soundex algorithm not available")
-            else:
-                raise
-
     def test_fuzzy_key_metaphone_matching(self):
         """Test metaphone-based fuzzy matching"""
         test_data = {

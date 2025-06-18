@@ -22,18 +22,24 @@ class jaf_eval:
     
     # Special forms that need custom evaluation logic
     special_forms = {
-        'path', 'if', 'and', 'or', 'not', 'exists?'
+        'path', '@', 'if', 'and', 'or', 'not', 'exists?'
     }
     
     # Regular functions that evaluate all arguments first
     funcs = {
         # predicates with strict type checking
         'eq?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 == x2 and type(x1) == type(x2)),
+        "=": adapt_jaf_operator(3, lambda x1, x2, obj: x1 == x2 and type(x1) == type(x2)),
         'neq?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 != x2 or type(x1) != type(x2)),
+        "!=": adapt_jaf_operator(3, lambda x1, x2, obj: x1 != x2 or type(x1) != type(x2)),
         'gt?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 > x2),
+        ">": adapt_jaf_operator(3, lambda x1, x2, obj: x1 > x2),
         'gte?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 >= x2),
+        ">=": adapt_jaf_operator(3, lambda x1, x2, obj: x1 >= x2),
         'lt?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 < x2),
+        '<': adapt_jaf_operator(3, lambda x1, x2, obj: x1 < x2),
         'lte?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 <= x2),
+        "<=": adapt_jaf_operator(3, lambda x1, x2, obj: x1 <= x2),
         'in?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 in x2),
         'starts-with?': adapt_jaf_operator(3, lambda start, value, obj: value.startswith(start)),
         'ends-with?': adapt_jaf_operator(3, lambda end, value, obj: value.endswith(end)),
@@ -47,6 +53,7 @@ class jaf_eval:
         'length': adapt_jaf_operator(2, lambda x, obj: len(x)),
         'type': adapt_jaf_operator(2, lambda x, obj: type(x).__name__),
         'keys': adapt_jaf_operator(2, lambda x, obj: list(x.keys())),
+        'values': adapt_jaf_operator(2, lambda x, obj: list(x.values())),
 
         # datetime functions
         'now': adapt_jaf_operator(1, lambda obj: datetime.datetime.now()),
@@ -70,6 +77,16 @@ class jaf_eval:
         :param obj: The dictionary object to evaluate.
         :return: Result of the evaluation.
         """
+
+        # Handle @ prefix strings - convert to path operation
+        if isinstance(query, str) and query.startswith('@'):
+            path_string = query[1:]  # Remove @
+            if not path_string:
+                raise PathSyntaxError("Empty path expression after @", path_segment="@")
+            path_ast = string_to_path_ast(path_string)
+            logger.debug(f"Converted @{path_string} to path AST: {path_ast}")
+            return eval_path(path_ast, obj)
+        
         # Handle non-list values (literals)
         if not isinstance(query, list):
             return query
@@ -97,9 +114,9 @@ class jaf_eval:
     def _eval_special_form(op, args, obj):
         """Handle special forms that need custom evaluation logic"""
         
-        if op == 'path':
+        if op == 'path' or op == '@':
             if len(args) != 1:
-                raise ValueError(f"'path' expects 1 argument, got {len(args)}")
+                raise ValueError(f"'{op}' expects 1 argument, got {len(args)}")
             path_expr = args[0]
             
             if isinstance(path_expr, str):
@@ -131,10 +148,16 @@ class jaf_eval:
         elif op == 'exists?':
             if len(args) != 1:
                 raise ValueError(f"'exists?' expects 1 argument, got {len(args)}")
+            
+            if isinstance(args[0], str) and args[0].startswith('@'):
+                # Convert @ prefixed strings to path expressions
+                path_string = args[0][1:]
+                args[0] = string_to_path_ast(path_string)
+                args[0] = ['path'] + [args[0]] if isinstance(args[0], list) else args[0]
     
             # The argument should be a path expression like ["path", ["user", "email"]]
             arg = args[0]
-            if isinstance(arg, list) and len(arg) == 2 and arg[0] == "path":
+            if isinstance(arg, list) and len(arg) == 2 and (arg[0] == "path" or arg[0] == "@"):
                 # Extract the path components directly
                 path_components = arg[1]
 
@@ -201,6 +224,12 @@ class jaf_eval:
         # Evaluate all arguments
         eval_args = []
         for arg in args:
+            if isinstance(arg, str) and arg.startswith('@'):
+                # Convert @ prefixed strings to path expressions
+                path_string = arg[1:]
+                arg = string_to_path_ast(path_string)
+                arg = ['path'] + [arg] if isinstance(arg, list) else arg
+
             if isinstance(arg, list):
                 val = jaf_eval.eval(arg, obj)
                 eval_args.append(val)

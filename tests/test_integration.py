@@ -118,7 +118,7 @@ class TestRealWorldScenarios:
     def test_string_operations(self):
         """Test string-based filtering operations"""
         # Find users with company email
-        result = jaf(self.users, ["ends-with?", "@company.com", ["path", [["key", "email"]]]])
+        result = jaf(self.users, ["ends-with?", "company.com", ["path", [["key", "email"]]]])
         assert isinstance(result, JafResultSet)
         assert sorted(list(result.indices)) == [0, 1, 2, 3]
         assert result.collection_size == len(self.users)

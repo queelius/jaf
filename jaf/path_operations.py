@@ -8,6 +8,8 @@ This module contains the path operation dispatcher and all path operation handle
 import logging
 import re
 from typing import Any, List
+import rapidfuzz.distance as distance
+import fuzzy
 
 from .path_exceptions import PathSyntaxError
 
@@ -32,66 +34,29 @@ def _fuzzy_match_keys(target_key: str, available_keys: List[str], cutoff: float,
         matches = difflib.get_close_matches(target_key, available_keys, cutoff=cutoff)
         return matches
     elif algorithm == "levenshtein":
-        try:
-            import rapidfuzz.distance as distance
-            matches = []
-            for key in available_keys:
-                similarity = 1 - (distance.Levenshtein.distance(target_key, key) / max(len(target_key), len(key)))
-                if similarity >= cutoff:
-                    matches.append(key)
-            return matches
-        except ImportError:
-            logger.warning("rapidfuzz not available for levenshtein algorithm, falling back to difflib")
-            import difflib
-            matches = difflib.get_close_matches(target_key, available_keys, cutoff=cutoff)
-            return matches
+        matches = []
+        for key in available_keys:
+            similarity = 1 - (distance.Levenshtein.distance(target_key, key) / max(len(target_key), len(key)))
+            if similarity >= cutoff:
+                matches.append(key)
+        return matches
     elif algorithm == "jaro_winkler":
-        try:
-            import rapidfuzz.distance as distance
-            matches = []
-            for key in available_keys:
-                similarity = distance.JaroWinkler.similarity(target_key, key)
-                if similarity >= cutoff:
-                    matches.append(key)
-            return matches
-        except ImportError:
-            logger.warning("rapidfuzz not available for jaro_winkler algorithm, falling back to difflib")
-            import difflib
-            matches = difflib.get_close_matches(target_key, available_keys, cutoff=cutoff)
-            return matches
-    elif algorithm == "soundex":
-        try:
-            import fuzzy
-            target_soundex = fuzzy.Soundex(4)(target_key)
-            matches = []
-            for key in available_keys:
-                key_soundex = fuzzy.Soundex(4)(key)
-                if target_soundex == key_soundex:
-                    matches.append(key)
-            return matches
-        except ImportError:
-            logger.warning("fuzzy library not available for soundex algorithm, falling back to difflib")
-            import difflib
-            matches = difflib.get_close_matches(target_key, available_keys, cutoff=cutoff)
-            return matches
+        matches = []
+        for key in available_keys:
+            similarity = distance.JaroWinkler.similarity(target_key, key)
+            if similarity >= cutoff:
+                matches.append(key)
+        return matches
     elif algorithm == "metaphone":
-        try:
-            import fuzzy
-            target_metaphone = fuzzy.DMetaphone()(target_key)[0]
-            matches = []
-            for key in available_keys:
-                key_metaphone = fuzzy.DMetaphone()(key)[0]
-                if target_metaphone and target_metaphone == key_metaphone:
-                    matches.append(key)
-            return matches
-        except ImportError:
-            logger.warning("fuzzy library not available for metaphone algorithm, falling back to difflib")
-            import difflib
-            matches = difflib.get_close_matches(target_key, available_keys, cutoff=cutoff)
-            return matches
+        target_metaphone = fuzzy.DMetaphone()(target_key)[0]
+        matches = []
+        for key in available_keys:
+            key_metaphone = fuzzy.DMetaphone()(key)[0]
+            if target_metaphone and target_metaphone == key_metaphone:
+                matches.append(key)
+        return matches
     else:
         raise ValueError(f"Unknown fuzzy matching algorithm: {algorithm}")
-
 
 class PathOperationDispatcher:
     """Dispatcher for path operations"""

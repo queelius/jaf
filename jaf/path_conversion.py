@@ -4,8 +4,8 @@ JAF-style JSON-access-format utilities
 
 This module provides the two primitives you normally need:
 
-* ``path_ast_to_string(ast)``  –  pretty-prints a parsed path AST back
-  into human-readable form (e.g. ``[['key','a'],['index',0]]`` →
+* ``path_ast_to_string(ast)``  –  converts a path AST into
+   human-readable form (e.g. ``[['key','a'],['index',0]]`` →
   ``"a[0]"``).
 
 * ``string_to_path_ast(path)`` –  the inverse operation: parses a path
@@ -173,8 +173,6 @@ def path_ast_to_string(path_ast: List[List[Any]]) -> str:
                         flag_str += "x"
                     if flags_arg & re.ASCII:
                         flag_str += "a"
-                    if flags_arg & re.LOCALE:
-                        flag_str += "l"
                     if flag_str:
                         result.append(flag_str)
 
@@ -347,3 +345,119 @@ def string_to_path_ast(path: str) -> List[List[Any]]:
         raise PathSyntaxError("Unexpected token", path_segment=snippet)
 
     return ast
+
+
+def path_expression_to_ast(path_expr):
+    """
+    Convert a path expression (string or @ syntax) to path AST format.
+    
+    Args:
+        path_expr: Can be:
+            - String path: "user.name" 
+            - @ string: "@user.name"
+            - Path AST: [["key", "user"], ["key", "name"]]
+            - @ AST form: ["@", [["key", "user"], ["key", "name"]]]
+            
+    Returns:
+        Standardized path AST: [["key", "user"], ["key", "name"]]
+    """
+    if isinstance(path_expr, str):
+        if path_expr.startswith('@'):
+            # Handle @string format
+            path_string = path_expr[1:]  # Remove @
+            if not path_string:
+                raise PathSyntaxError("Empty path expression after @")
+            return string_to_path_ast(path_string)
+        else:
+            # Handle regular string format
+            return string_to_path_ast(path_expr)
+    
+    elif isinstance(path_expr, list):
+        if len(path_expr) == 2 and path_expr[0] == "@":
+            # Handle ["@", path_ast] format
+            path_ast = path_expr[1]
+            if not isinstance(path_ast, list):
+                raise PathSyntaxError("@ with AST form requires list of path components")
+            return path_ast  # Already in AST format, just return it
+        else:
+            # Assume it's already a path AST
+            return path_expr
+    
+    else:
+        raise PathSyntaxError(f"Invalid path expression type: {type(path_expr)}")
+
+def normalize_path_in_ast(ast_node):
+    """
+    Normalize path expressions within a JAF AST node.
+    
+    Converts all path forms to standard ["path", path_ast] format.
+    
+    Args:
+        ast_node: JAF AST node (may contain various path formats)
+        
+    Returns:
+        JAF AST with normalized path expressions
+    """
+    if isinstance(ast_node, str) and ast_node.startswith('@'):
+        # Convert @string to ["path", path_ast]
+        path_ast = path_expression_to_ast(ast_node)
+        return ["path", path_ast]
+    
+    elif isinstance(ast_node, list):
+        if len(ast_node) == 2 and ast_node[0] == "@":
+            # Convert ["@", path_expr] to ["path", path_ast] 
+            path_ast = path_expression_to_ast(ast_node)
+            return ["path", path_ast]
+        else:
+            # Recursively process list elements
+            return [normalize_path_in_ast(elem) for elem in ast_node]
+    
+    else:
+        # Return other types unchanged
+        return ast_node
+
+def ast_to_path_string(path_ast, use_at_syntax=False):
+    """
+    Convert path AST to string representation.
+    
+    Args:
+        path_ast: Path AST format
+        use_at_syntax: If True, prefix with @
+        
+    Returns:
+        String representation of path
+    """
+    path_string = path_ast_to_string(path_ast)
+    return f"@{path_string}" if use_at_syntax else path_string
+
+def is_path_expression(expr):
+    """
+    Check if an expression is a valid path in any supported format.
+    
+    Args:
+        expr: Expression to check (string, @string, AST, or @AST)
+        
+    Returns:
+        bool: True if it's a valid path expression
+    """
+    try:
+        path_expression_to_ast(expr)
+        return True
+    except PathSyntaxError:
+        return False
+
+def is_at_syntax(expr):
+    """
+    Check if an expression uses @ syntax.
+    
+    Args:
+        expr: Expression to check
+        
+    Returns:
+        bool: True if it uses @ syntax
+    """
+    if isinstance(expr, str):
+        return expr.startswith('@')
+    elif isinstance(expr, list) and len(expr) == 2:
+        return expr[0] == "@"
+    return False
