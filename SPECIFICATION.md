@@ -30,14 +30,17 @@ When serialized to JSON (e.g., by the CLI), a `JafResultSet` has the following s
     -   The total number of items in the original data collection from which the indices were derived. This is crucial for operations like `NOT`.
 -   `collection_id`: `Any` (string, number, null, etc.)
     -   An optional identifier for the original data collection. This helps ensure that boolean operations are performed between result sets derived from the same logical collection. It can be a file path, directory path, or a user-defined ID.
--   `filenames_in_collection`: `Array<String>` (optional)
-    -   A sorted list of unique, absolute file paths that contributed data to form the collection. This is primarily populated when the input to `jaf filter` is a directory. It's used by `jaf resolve` (and `JafResultSet.get_matching_objects()`) to locate the original data.
+-   `collection_source`: `Object` (optional)
+    -   A dictionary describing the source of the data collection, used by `jaf resolve` to retrieve original objects. The structure depends on the source type.
+    -   **For directories:** `{"type": "directory", "path": "/abs/path/to/dir", "files": ["/abs/path/to/dir/a.json", ...]}`
+    -   **For JSONL files:** `{"type": "jsonl", "path": "/abs/path/to/file.jsonl"}`
+    -   **For JSON array files:** `{"type": "json_array", "path": "/abs/path/to/file.json"}`
 
 **Example JSON Output (compact):**
 ```json
-{"indices":[0,2],"collection_size":3,"collection_id":"/path/to/data.json","filenames_in_collection":["/path/to/data.json"]}
+{"indices":[0,2],"collection_size":3,"collection_id":"/path/to/data_dir","collection_source":{"type":"directory","path":"/path/to/data_dir","files":["/path/to/data_dir/a.json"]}}
 ```
-If `filenames_in_collection` is not present or `null`, it's omitted from the JSON.
+If `collection_source` is not present or `null`, it's omitted from the JSON.
 
 ## Query Format
 

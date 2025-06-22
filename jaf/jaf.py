@@ -8,21 +8,21 @@ logger = logging.getLogger(__name__)
 class jafError(Exception):
     pass
 
-def jaf(data: List[Any], query: Union[List, str], collection_id: Optional[Any] = None) -> JafResultSet:
+def jaf(data: List[Any], query: Union[List, str], collection_id: Optional[Any] = None, collection_source: Optional[Dict[str, Any]] = None) -> JafResultSet:
     """
-    Filter a list of JSON values based on a query AST (nested lists) or DSL
-    string. Only dictionary items in the data list are actively filtered.
+    Filters a list of JSON-like objects based on a JAF query.
 
-    Args:
-        data: List of JSON values to filter.
-        query: Nested list/dict AST or a DSL string representing the filter.
-        collection_id: Optional identifier for the data collection.
+    This function evaluates the provided query against each item in the data
+    list, which should contain JSON-serializable objects. The query can be
+    either a nested list/dict structure representing the AST or a DSL string.
+    Only items that are dictionaries will be considered for matching.
 
-    Returns:
-        JafResultSet containing indices of items that satisfy the query.
-
-    Raises:
-        jafError: If query is invalid or evaluation fails.
+    :param data: The list of JSON-like objects to filter.
+    :param query: The JAF query as a list-based AST or a raw JSON string.
+    :param collection_id: An optional identifier for the data collection.
+    :param collection_source: An optional dictionary describing the data source for later resolution.
+    :return: A JafResultSet containing the indices of matching objects.
+    :raises jafError: If the query is invalid or an evaluation error occurs.
     """
 
     if not query:
@@ -34,7 +34,7 @@ def jaf(data: List[Any], query: Union[List, str], collection_id: Optional[Any] =
 
     logger.debug(f"Applying {query=} to {len(data)} items. Collection ID: {collection_id}")
     try:
-        results_indices = []
+        matching_indices = []
         for i, item in enumerate(data): # Renamed obj to item
             if isinstance(item, dict): # Only attempt to evaluate on dictionaries
                 logger.debug(f"Evaluating {query=} against dictionary item at index {i}: {item=}.")
@@ -42,7 +42,7 @@ def jaf(data: List[Any], query: Union[List, str], collection_id: Optional[Any] =
                 if isinstance(result, bool):
                     if result:
                         logger.debug(f"Item at index {i} satisfied the query.")
-                        results_indices.append(i)
+                        matching_indices.append(i)
                     else:
                         logger.debug(f"Item at index {i} did not satisfy the query.")
                 else:
@@ -58,4 +58,9 @@ def jaf(data: List[Any], query: Union[List, str], collection_id: Optional[Any] =
         raise jafError(f"Unexpected JAF evaluation error: {e_unexp}")
 
 
-    return JafResultSet(indices=results_indices, collection_size=len(data), collection_id=collection_id)
+    return JafResultSet(
+        indices=matching_indices,
+        collection_size=len(data),
+        collection_id=collection_id,
+        collection_source=collection_source
+    )

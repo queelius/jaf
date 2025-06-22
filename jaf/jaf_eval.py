@@ -123,7 +123,6 @@ class jaf_eval:
                 path_expr_ast = string_to_path_ast(path_expr)
                 if not path_expr_ast:
                     raise ValueError("Invalid path expression: empty or malformed")
-                print(f"Converted path string {path_expr} to AST: {path_expr_ast}")
                 path_expr = path_expr_ast
                 
             if not isinstance(path_expr, list):
@@ -142,7 +141,6 @@ class jaf_eval:
                     raise ValueError(f"Unknown path operation: {component[0]}")
             
             res = eval_path(path_expr, obj)
-            print(f"Evaluated path expression {path_expr} against object: {obj} -> Result: {res}")
             return res
         
         elif op == 'exists?':

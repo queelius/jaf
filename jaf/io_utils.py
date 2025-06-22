@@ -1,70 +1,102 @@
 import os
 import json
 import logging
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Iterator
 
 logger = logging.getLogger(__name__)
 
-def walk_data_files(root_dir: str, recursive: bool = True) -> List[str]:
+def walk_data_files(directory_path: str, recursive: bool) -> Iterator[str]:
     """
-    Walk through a directory to find all JSON and JSONL files.
+    Walks a directory and yields paths to .json and .jsonl files.
+    Sorts the files to ensure a consistent order.
     """
-    data_files = []
-    for r, _, files in os.walk(root_dir): # Renamed root to r to avoid conflict
-        for f_name in files: # Renamed file to f_name
-            if f_name.endswith(".json") or f_name.endswith(".jsonl"):
-                data_files.append(os.path.join(r, f_name))
-        if not recursive:
-            break
-    return data_files
+    if not os.path.isdir(directory_path):
+        return # Gracefully handle non-existent directories
+
+    found_files = []
+    if recursive:
+        for root, _, files in os.walk(directory_path):
+            for file in files:
+                if file.endswith((".json", ".jsonl")):
+                    found_files.append(os.path.join(root, file))
+    else:
+        for file in os.listdir(directory_path):
+            if file.endswith((".json", ".jsonl")):
+                full_path = os.path.join(directory_path, file)
+                if os.path.isfile(full_path):
+                    found_files.append(full_path)
+    
+    # Sort to ensure deterministic order
+    for file_path in sorted(found_files):
+        yield file_path
 
 def load_objects_from_file(file_path: str) -> Optional[List[Any]]:
     """
-    Load a list of JSON values from a single JSON or JSONL file.
-    Returns None if critical errors occur or no valid values are found.
+    Loads a list of JSON objects from a .json (array) or .jsonl file.
+    Returns None if the file cannot be parsed or is empty.
     """
-    objects: List[Any] = []
-    is_jsonl = file_path.endswith(".jsonl")
-
+    logger.debug(f"Attempting to load objects from: {file_path}")
+    objects = []
     try:
         with open(file_path, "r", encoding="utf-8") as f:
-            if is_jsonl:
-                for line_num, line in enumerate(f, 1):
+            if file_path.endswith(".jsonl"):
+                for line in f:
                     line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        value = json.loads(line)
-                        objects.append(value)
-                    except json.JSONDecodeError:
-                        logger.warning(
-                            f"Error decoding JSONL line {line_num} in {file_path}. Skipping line.",
-                            exc_info=True # Set to False if too verbose for common errors
-                        )
-            else:  # .json file
-                data = json.load(f)
+                    if line:
+                        objects.append(json.loads(line))
+            elif file_path.endswith(".json"):
+                content = f.read()
+                if not content.strip():
+                    logger.info(f"File is empty: {file_path}")
+                    return None
+                data = json.loads(content)
                 if isinstance(data, list):
                     objects.extend(data)
                 else:
+                    # If it's a single JSON object, treat it as a collection of one.
                     objects.append(data)
+            else:
+                logger.warning(f"Unsupported file type, skipping: {file_path}")
+                return None
         
-        if not objects and os.path.exists(file_path): # File exists but yielded no objects
-            logger.info(f"No JSON values successfully loaded from {file_path} (file might be empty or contain only invalid JSON).")
-            # Return empty list for "empty but validly processed file"
-            # This helps differentiate from file not found or critical parse error for the whole file.
-            return [] 
-        elif not objects: # File might not exist or other initial issue
-             return None
-
-
+        if not objects:
+            logger.info(f"No JSON objects found or loaded from {file_path}")
+            return None
+            
+        logger.debug(f"Successfully loaded {len(objects)} objects from {file_path}")
         return objects
-
-    except FileNotFoundError: # Explicitly handle file not found before IOError
-        logger.error(f"File not found: {file_path}")
-        return None # Critical error
-    except (json.JSONDecodeError, IOError) as e: # JSONDecodeError for whole .json file, IOError for read issues
-        logger.error(f"Error reading or parsing {file_path}: {e}", exc_info=True)
-        return None # Critical error
-    except Exception as e_outer: 
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON decode error in {file_path}: {e}", exc_info=False)
+        return None
+    except IOError as e:
+        logger.error(f"IO error reading {file_path}: {e}", exc_info=False)
+        return None
+    except Exception as e_outer:
         logger.error(f"Unexpected error loading file {file_path}: {e_outer}", exc_info=True)
-        return None # Critical error
+        return None
+
+def load_collection(collection_source: dict) -> List[Any]:
+    """
+    Loads a collection of objects based on the collection_source descriptor.
+    """
+    source_type = collection_source.get("type")
+    all_objects = []
+
+    if source_type == "directory":
+        file_paths = collection_source.get("files", [])
+        for file_path in sorted(file_paths): # Ensure consistent order
+            loaded = load_objects_from_file(file_path)
+            if loaded:
+                all_objects.extend(loaded)
+    elif source_type in ("jsonl", "json_array"):
+        path = collection_source.get("path")
+        if path and os.path.exists(path):
+            loaded = load_objects_from_file(path)
+            if loaded:
+                all_objects.extend(loaded)
+        else:
+            logger.warning(f"Path not found for collection_source: {path}")
+    else:
+        raise NotImplementedError(f"Unsupported collection source type: {source_type}")
+
+    return all_objects

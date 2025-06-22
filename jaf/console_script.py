@@ -26,12 +26,7 @@ def main():
         help="Set the logging level."
     )
     # --pretty-print argument removed
-    parser.add_argument(
-        "--drop-filenames",
-        action="store_true",
-        help="Omit 'filenames_in_collection' from the output."
-    )
-
+    # The --drop-filenames argument is now obsolete with collection_source
     subparsers = parser.add_subparsers(dest="command", required=True, help="Sub-command to execute")
 
     # --- 'filter' Subcommand ---
@@ -160,62 +155,53 @@ def handle_filter_command(args):
 
     input_is_directory = os.path.isdir(args.input_source)
     all_objects_to_filter: List[Any] = []
-    file_paths_contributing: List[str] = [] # Stores abspaths of files that contributed objects
+    collection_source: Dict[str, Any] = {}
     effective_collection_id: Optional[Any] = args.collection_id
 
     if input_is_directory:
-        logger.info(f"Input source is a directory: {args.input_source}. Aggregating content.")
-        discovered_files = walk_data_files(args.input_source, recursive=args.recursive)
-        if not discovered_files:
-            print(f"No .json or .jsonl files found in directory {args.input_source}", file=sys.stderr)
-            sys.exit(0) # No files to process is not an error for filter.
-
-        for file_path in discovered_files:
-            logger.debug(f"Loading objects from file: {file_path}")
-            objects_from_single_file = load_objects_from_file(file_path)
-            if objects_from_single_file is not None: # Check for None (critical load error)
-                all_objects_to_filter.extend(objects_from_single_file)
-                if objects_from_single_file: # Only add to contributing if it actually added objects
-                    file_paths_contributing.append(os.path.abspath(file_path))
-                elif not objects_from_single_file and os.path.exists(file_path): # File exists, was valid (e.g. empty JSON array), but no objects
-                    file_paths_contributing.append(os.path.abspath(file_path)) # Still counts as part of collection
-            else:
-                logger.warning(f"Skipping file {file_path} due to loading errors or it was empty and returned None.")
+        abs_dir_path = os.path.abspath(args.input_source)
+        if not effective_collection_id:
+            effective_collection_id = abs_dir_path
         
-        if not effective_collection_id: # If user didn't provide a collection ID
-            effective_collection_id = os.path.abspath(args.input_source) # Default to directory path
+        file_paths_contributing = []
+        for file_path in walk_data_files(args.input_source, args.recursive):
+            loaded_objects = load_objects_from_file(file_path)
+            if loaded_objects:
+                all_objects_to_filter.extend(loaded_objects)
+                file_paths_contributing.append(os.path.abspath(file_path))
+        
+        if file_paths_contributing:
+            collection_source = {
+                "type": "directory",
+                "path": abs_dir_path,
+                "files": sorted(list(set(file_paths_contributing)))
+            }
 
     elif os.path.isfile(args.input_source):
-        if args.input_source.endswith((".json", ".jsonl")):
-            logger.info(f"Input source is a single file: {args.input_source}")
-            loaded_objects = load_objects_from_file(args.input_source)
-            if loaded_objects is not None: # Successfully loaded (could be empty list)
-                all_objects_to_filter = loaded_objects
-                file_paths_contributing.append(os.path.abspath(args.input_source))
-            # If loaded_objects is None, all_objects_to_filter remains empty.
-            
-            if not effective_collection_id: # If user didn't provide a collection ID
-                effective_collection_id = os.path.abspath(args.input_source) # Default to file path
-        else:
-            print(f"Error: Input file '{args.input_source}' is not a .json or .jsonl file.", file=sys.stderr)
-            sys.exit(1)
+        abs_file_path = os.path.abspath(args.input_source)
+        if not effective_collection_id:
+            effective_collection_id = abs_file_path
+
+        loaded_objects = load_objects_from_file(args.input_source)
+        if loaded_objects:
+            all_objects_to_filter = loaded_objects
+        
+        if args.input_source.endswith(".jsonl"):
+            collection_source = {"type": "jsonl", "path": abs_file_path}
+        elif args.input_source.endswith(".json"):
+            collection_source = {"type": "json_array", "path": abs_file_path}
+
     else:
         print(f"Error: Input source '{args.input_source}' is not a valid file or directory.", file=sys.stderr)
         sys.exit(1)
 
-    if not all_objects_to_filter and not file_paths_contributing:
-        # This means no files were successfully processed at all or input source was invalid initially.
-        # Error messages for invalid source are handled above.
-        # If files were found but all failed to load or were empty in a way that load_objects_from_file returned None for all.
+    if not all_objects_to_filter:
         logger.info(f"No data could be loaded or no filterable JSON values found in the provided source(s): {args.input_source}")
-        # For filter command, producing an empty result set for zero items is valid.
-        # So, we proceed to jaf() which will return an empty JafResultSet.
-    
     # If all_objects_to_filter is empty, jaf() will correctly produce a JafResultSet with empty indices and collection_size=0.
 
     try:
         logger.info(f"Applying JAF query to {len(all_objects_to_filter)} aggregated items. Collection ID: {effective_collection_id}")
-        result_set = jaf(all_objects_to_filter, query_ast, collection_id=effective_collection_id)
+        result_set = jaf(all_objects_to_filter, query_ast, collection_id=effective_collection_id, collection_source=collection_source)
 
         if args.resolve: # Renamed from args.output_matches
             matched_data = [all_objects_to_filter[i] for i in result_set.indices]
@@ -223,18 +209,18 @@ def handle_filter_command(args):
             if logger.isEnabledFor(logging.INFO):
                 print(f"--- Filtering Complete (Resolving Matches) ---", file=sys.stderr)
                 print(f"Summary: Matched {len(matched_data)} item(s) out of {len(all_objects_to_filter)}.", file=sys.stderr)
-                if input_is_directory:
-                     print(f"Source Directory: {os.path.abspath(args.input_source)}", file=sys.stderr)
-                     print(f"Files contributing to collection ({len(file_paths_contributing)}): {', '.join(sorted(list(set(file_paths_contributing))))}", file=sys.stderr)
-                elif file_paths_contributing: # Single file case
-                     print(f"Source File: {file_paths_contributing[0]}", file=sys.stderr)
+                source_desc = collection_source.get("path") or args.input_source
+                if collection_source.get("type") == "directory":
+                     print(f"Source Directory: {source_desc}", file=sys.stderr)
+                     print(f"Files contributing to collection ({len(collection_source.get('files',[]))}): {', '.join(collection_source.get('files',[]))}", file=sys.stderr)
+                elif source_desc:
+                     print(f"Source File: {source_desc}", file=sys.stderr)
                 print(f"--- Matches (JSONL to stdout) ---", file=sys.stderr)
 
             _print_objects_as_jsonl(matched_data)
         else:
             output_dict = result_set.to_dict()
-            if file_paths_contributing:
-                output_dict["filenames_in_collection"] = sorted(list(set(file_paths_contributing)))
+            # No longer need to manually add filenames_in_collection or check --drop-filenames
             
             # Always compact JSON for JafResultSet output
             print(json.dumps(output_dict, indent=None, separators=(',', ':')))
@@ -344,9 +330,6 @@ def handle_boolean_command(args):
     # or an error should have caused an exit.
     if final_result_set is not None:
         output_dict = final_result_set.to_dict()
-        if args.drop_filenames: 
-            output_dict.pop("filenames_in_collection", None)
-        
         # Always compact JSON for JafResultSet output
         print(json.dumps(output_dict, indent=None, separators=(',', ':')))
     else:
@@ -372,11 +355,10 @@ def handle_boolean_command(args):
                 indices=[], 
                 collection_size=metadata_source_jrs.collection_size,
                 collection_id=metadata_source_jrs.collection_id,
-                filenames_in_collection=metadata_source_jrs.filenames_in_collection
+                collection_source=metadata_source_jrs.collection_source
             )
             output_dict = empty_rs.to_dict()
-            if args.drop_filenames: # Respect --drop-filenames for this default output too
-                output_dict.pop("filenames_in_collection", None)
+            # The --drop-filenames argument is obsolete and has been removed.
             print(json.dumps(output_dict, indent=None, separators=(',', ':')))
         else:
             # This is a more critical state: no metadata source to create even a default empty JRS.
@@ -401,7 +383,7 @@ def handle_resolve_command(args): # Renamed from handle_explode_command
             logger.warning(
                 f"Resolve command: JafResultSet has indices but no matching objects were ultimately retrieved. "
                 f"This might occur if original data sources were empty or yielded no items for the given indices. "
-                f"Source: {input_jrs.filenames_in_collection or input_jrs.collection_id}"
+                f"Source: {input_jrs.collection_source or input_jrs.collection_id}"
             )
         
         _print_objects_as_jsonl(matching_objects) # Already prints compact JSONL

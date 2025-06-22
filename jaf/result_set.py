@@ -1,10 +1,15 @@
-import os # For os.path.isfile, os.path.exists
-from typing import Set, Any, Optional, Iterable, Union, Dict, List
-# Import the loader function
-from .io_utils import load_objects_from_file 
+import json
+import os
+import logging
+from typing import Any, Dict, Iterable, List, Optional, Set, Union
+
+# Import from the new io_utils module
+from .io_utils import load_collection
+
+logger = logging.getLogger(__name__)
 
 class JafResultSetError(Exception):
-    """Custom exception for JafResultSet operations."""
+    """Custom exception for errors related to JafResultSet operations."""
     pass
 
 class JafResultSet:
@@ -17,202 +22,247 @@ class JafResultSet:
                  indices: Union[Iterable[int], Set[int]], 
                  collection_size: int, 
                  collection_id: Optional[Any] = None,
-                 filenames_in_collection: Optional[List[str]] = None): # Added filenames_in_collection
+                 collection_source: Optional[Dict[str, Any]] = None):
         if not isinstance(collection_size, int) or collection_size < 0:
             raise ValueError("collection_size must be a non-negative integer.")
         
         self.indices: Set[int] = set(indices)
         self.collection_size: int = collection_size
         self.collection_id: Optional[Any] = collection_id
-        self.filenames_in_collection: Optional[List[str]] = sorted(list(set(filenames_in_collection))) if filenames_in_collection else None # Store sorted unique
+        self.collection_source: Optional[Dict[str, Any]] = collection_source
 
         # Validate indices
-        if self.collection_size == 0:
-            if self.indices:
-                raise ValueError("Indices must be empty if collection_size is 0.")
-        else: # collection_size > 0
-            for i in self.indices:
-                if not isinstance(i, int) or not (0 <= i < self.collection_size):
-                    raise ValueError(
-                        f"All indices must be integers within the range [0, {self.collection_size - 1}]. "
-                        f"Found invalid index: {i}"
-                    )
+        if collection_size == 0 and self.indices:
+            raise ValueError("Indices must be empty if collection_size is 0.")
+
+        for i in self.indices:
+            if not isinstance(i, int) or not (0 <= i < collection_size):
+                valid_range_str = f"within the range [0, {collection_size - 1}]" if collection_size > 0 else "empty"
+                raise ValueError(
+                    f"All indices must be integers {valid_range_str}. "
+                    f"Found invalid index: {i}"
+                )
+
+    def _check_compatibility(self, other: "JafResultSet") -> None:
+        """
+        Verifies that another JafResultSet is compatible for a binary operation.
+
+        Compatibility requires that both result sets originate from the same logical
+        data collection, which is checked by comparing `collection_size` and
+        `collection_id`.
+
+        Args:
+            other: The other JafResultSet instance to compare against.
+
+        Raises:
+            JafResultSetError: If the result sets are not compatible.
+            TypeError: If 'other' is not a JafResultSet.
+        """
+        if not isinstance(other, JafResultSet):
+            raise TypeError("Operand must be an instance of JafResultSet")
+
+        # For boolean operations, we primarily care that the collections are the
+        # same size and have the same ID. The physical source representation
+        # (e.g., collection_source) does not need to match, allowing for
+        # operations between a result set from a directory and one from a
+        # re-aggregated file, as long as the logical collection is the same.
+        if self.collection_size != other.collection_size:
+            raise JafResultSetError(
+                f"Collection sizes do not match: {self.collection_size} != {other.collection_size}"
+            )
+        if self.collection_id is not None and other.collection_id is not None:
+            if self.collection_id != other.collection_id:
+                raise JafResultSetError(
+                    f"Collection IDs do not match: '{self.collection_id}' != '{other.collection_id}'"
+                )
+
+    def AND(self, other: "JafResultSet") -> "JafResultSet":
+        """
+        Performs a logical AND (intersection) with another JafResultSet.
+
+        Args:
+            other: The JafResultSet to intersect with.
+
+        Returns:
+            A new JafResultSet containing the intersection of indices.
+        """
+        self._check_compatibility(other)
+        new_indices = self.indices.intersection(other.indices)
+        return JafResultSet(
+            indices=new_indices,
+            collection_size=self.collection_size,
+            collection_id=self.collection_id or other.collection_id,
+            collection_source=self.collection_source
+            or other.collection_source,
+        )
+
+    def __and__(self, other: Any) -> "JafResultSet":
+        """Operator overload for `&` (AND)."""
+        if not isinstance(other, JafResultSet):
+            return NotImplemented
+        return self.AND(other)
+
+    def OR(self, other: "JafResultSet") -> "JafResultSet":
+        """
+        Performs a logical OR (union) with another JafResultSet.
+
+        Args:
+            other: The JafResultSet to union with.
+
+        Returns:
+            A new JafResultSet containing the union of indices.
+        """
+        self._check_compatibility(other)
+        new_indices = self.indices.union(other.indices)
+        return JafResultSet(
+            indices=new_indices,
+            collection_size=self.collection_size,
+            collection_id=self.collection_id or other.collection_id,
+            collection_source=self.collection_source
+            or other.collection_source,
+        )
+
+    def __or__(self, other: Any) -> "JafResultSet":
+        """Operator overload for `|` (OR)."""
+        if not isinstance(other, JafResultSet):
+            return NotImplemented
+        return self.OR(other)
+
+    def NOT(self) -> "JafResultSet":
+        """
+        Performs a logical NOT (complement) on the JafResultSet.
+
+        The complement is calculated relative to the entire collection, defined
+        by `collection_size`.
+
+        Returns:
+            A new JafResultSet containing all indices from the collection
+            that are not in this result set.
+        """
+        all_indices = set(range(self.collection_size))
+        new_indices = all_indices.difference(self.indices)
+        return JafResultSet(
+            indices=new_indices,
+            collection_size=self.collection_size,
+            collection_id=self.collection_id,
+            collection_source=self.collection_source,
+        )
+
+    def __invert__(self) -> "JafResultSet":
+        """Operator overload for `~` (NOT)."""
+        return self.NOT()
+
+    def XOR(self, other: "JafResultSet") -> "JafResultSet":
+        """
+        Performs a logical XOR (symmetric difference) with another JafResultSet.
+
+        Args:
+            other: The JafResultSet to perform XOR with.
+
+        Returns:
+            A new JafResultSet containing indices that are in either set,
+            but not in their intersection.
+        """
+        self._check_compatibility(other)
+        new_indices = self.indices.symmetric_difference(other.indices)
+        return JafResultSet(
+            indices=new_indices,
+            collection_size=self.collection_size,
+            collection_id=self.collection_id or other.collection_id,
+            collection_source=self.collection_source
+            or other.collection_source,
+        )
+
+    def __xor__(self, other: Any) -> "JafResultSet":
+        """Operator overload for `^` (XOR)."""
+        if not isinstance(other, JafResultSet):
+            return NotImplemented
+        return self.XOR(other)
+
+    def SUBTRACT(self, other: "JafResultSet") -> "JafResultSet":
+        """
+        Performs a logical SUBTRACT (difference) with another JafResultSet.
+
+        Removes indices from this set that are present in the other set.
+
+        Args:
+            other: The JafResultSet whose indices will be subtracted from this one.
+
+        Returns:
+            A new JafResultSet containing indices from this set but not
+            from the other set.
+        """
+        self._check_compatibility(other)
+        new_indices = self.indices.difference(other.indices)
+        return JafResultSet(
+            indices=new_indices,
+            collection_size=self.collection_size,
+            collection_id=self.collection_id or other.collection_id,
+            collection_source=self.collection_source
+            or other.collection_source,
+        )
+
+    def __sub__(self, other: Any) -> "JafResultSet":
+        """Operator overload for `-` (SUBTRACT)."""
+        if not isinstance(other, JafResultSet):
+            return NotImplemented
+        return self.SUBTRACT(other)
 
     def to_dict(self) -> Dict[str, Any]:
         """
         Serializes the JafResultSet to a dictionary.
         """
-        data = {
-            "indices": sorted(list(self.indices)), # Store as sorted list for consistent output
+        return {
+            "indices": sorted(list(self.indices)),
             "collection_size": self.collection_size,
-            "collection_id": self.collection_id
+            "collection_id": self.collection_id,
+            "collection_source": self.collection_source,
         }
-        if self.filenames_in_collection is not None:
-            data["filenames_in_collection"] = self.filenames_in_collection # Already sorted
-        return data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'JafResultSet':
         """
-        Creates a JafResultSet instance from a dictionary.
-        Expected keys: "indices" (list/set of int), "collection_size" (int),
-                       "collection_id" (optional), "filenames_in_collection" (optional list of str).
+        Deserializes a JafResultSet from a dictionary.
         """
-        try:
-            indices = data['indices']
-            collection_size = data['collection_size']
-            collection_id = data.get('collection_id') # Optional
-            filenames_in_collection = data.get('filenames_in_collection') # Optional
-            
-            if not isinstance(indices, (list, set)):
-                raise TypeError("JafResultSet.from_dict: 'indices' must be a list or set.")
-            if not isinstance(collection_size, int):
-                raise TypeError("JafResultSet.from_dict: 'collection_size' must be an integer.")
-            if filenames_in_collection is not None and not isinstance(filenames_in_collection, list):
-                raise TypeError("JafResultSet.from_dict: 'filenames_in_collection' must be a list if provided.")
-            if filenames_in_collection is not None and not all(isinstance(f, str) for f in filenames_in_collection):
-                raise TypeError("JafResultSet.from_dict: All items in 'filenames_in_collection' must be strings.")
-            return cls(set(indices), collection_size, collection_id, filenames_in_collection)
-        except KeyError as e:
-            raise ValueError(f"JafResultSet.from_dict: Missing required key in input data: {e}")
-        except TypeError as e: # Catch type errors from our checks
-            raise ValueError(f"JafResultSet.from_dict: Type error in input data: {e}")
+        if "indices" not in data:
+            raise ValueError("JafResultSet.from_dict: Missing required key in input data: 'indices'")
+        if "collection_size" not in data:
+            raise ValueError("JafResultSet.from_dict: Missing required key in input data: 'collection_size'")
 
+        indices = data["indices"]
+        if not isinstance(indices, (list, set)):
+            raise ValueError("JafResultSet.from_dict: Type error in input data: 'indices' must be a list or set.")
 
-    def _check_compatibility(self, other: 'JafResultSet') -> None:
-        """
-        Checks if another JafResultSet is compatible for boolean operations.
-        Raises JafResultSetError if not compatible.
-        """
-        if not isinstance(other, JafResultSet):
-            raise TypeError("Operand must be an instance of JafResultSet.")
-        if self.collection_size != other.collection_size:
-            raise JafResultSetError(
-                f"Collection sizes do not match: {self.collection_size} != {other.collection_size}."
-            )
-        if self.collection_id is not None and other.collection_id is not None and \
-           self.collection_id != other.collection_id:
-            raise JafResultSetError(
-                f"Collection IDs do not match: '{self.collection_id}' != '{other.collection_id}'."
-            )
-        # Compatibility for filenames_in_collection:
-        # If both are set, they should ideally be the same for the concept of a "collection" to hold.
-        # However, operations like AND/OR/NOT don't strictly depend on them being identical,
-        # as the core logic is on indices. We might choose to merge them or prioritize one.
-        # For now, we'll propagate them. If they differ, the resulting set might inherit from 'self'.
-        # A stricter check could be added here if necessary.
-        # if self.filenames_in_collection is not None and \
-        #    other.filenames_in_collection is not None and \
-        #    set(self.filenames_in_collection) != set(other.filenames_in_collection):
-        #    logger.warning("Operating on JafResultSets with different filenames_in_collection. This may be unintended.")
+        collection_size = data["collection_size"]
+        if not isinstance(collection_size, int):
+            raise ValueError("JafResultSet.from_dict: 'collection_size' must be an integer.")
 
+        # Backward compatibility for 'filenames_in_collection'
+        collection_source = data.get("collection_source")
+        if not collection_source and "filenames_in_collection" in data:
+            filenames = data["filenames_in_collection"]
+            collection_id = data.get("collection_id")
+            # Infer source from collection_id and filenames
+            source_path = collection_id if isinstance(collection_id, str) and os.path.isdir(collection_id) else None
+            collection_source = {
+                "type": "directory",
+                "path": source_path,
+                "files": filenames
+            }
+            logger.debug(f"Converted legacy 'filenames_in_collection' to 'collection_source': {collection_source}")
 
-    def AND(self, other: 'JafResultSet') -> 'JafResultSet':
-        """
-        Performs a logical AND (intersection) with another JafResultSet.
-        Returns a new JafResultSet.
-        """
-        self._check_compatibility(other)
-        new_indices = self.indices.intersection(other.indices)
-        new_collection_id = self.collection_id if self.collection_id is not None else other.collection_id
-        # Propagate filenames: if self has it, use it. Otherwise, if other has it, use that.
-        new_filenames = self.filenames_in_collection if self.filenames_in_collection is not None else other.filenames_in_collection
-        return JafResultSet(new_indices, self.collection_size, new_collection_id, new_filenames)
-
-    def OR(self, other: 'JafResultSet') -> 'JafResultSet':
-        """
-        Performs a logical OR (union) with another JafResultSet.
-        Returns a new JafResultSet.
-        """
-        self._check_compatibility(other)
-        new_indices = self.indices.union(other.indices)
-        new_collection_id = self.collection_id if self.collection_id is not None else other.collection_id
-        new_filenames = self.filenames_in_collection if self.filenames_in_collection is not None else other.filenames_in_collection
-        return JafResultSet(new_indices, self.collection_size, new_collection_id, new_filenames)
-
-    def NOT(self) -> 'JafResultSet':
-        """
-        Performs a logical NOT (complement) on this JafResultSet.
-        Returns a new JafResultSet.
-        """
-        all_possible_indices = set(range(self.collection_size))
-        new_indices = all_possible_indices.difference(self.indices)
-        # NOT operation preserves the original collection's metadata
-        return JafResultSet(new_indices, self.collection_size, self.collection_id, self.filenames_in_collection)
-
-    def XOR(self, other: 'JafResultSet') -> 'JafResultSet':
-        """
-        Performs a logical XOR (symmetric difference) with another JafResultSet.
-        Returns a new JafResultSet.
-        """
-        self._check_compatibility(other)
-        new_indices = self.indices.symmetric_difference(other.indices)
-        new_collection_id = self.collection_id if self.collection_id is not None else other.collection_id
-        new_filenames = self.filenames_in_collection if self.filenames_in_collection is not None else other.filenames_in_collection
-        return JafResultSet(new_indices, self.collection_size, new_collection_id, new_filenames)
-
-    def SUBTRACT(self, other: 'JafResultSet') -> 'JafResultSet':
-        """
-        Performs a logical SUBTRACT (set difference, self - other) with another JafResultSet.
-        Returns a new JafResultSet.
-        """
-        self._check_compatibility(other)
-        new_indices = self.indices.difference(other.indices)
-        new_collection_id = self.collection_id if self.collection_id is not None else other.collection_id
-        new_filenames = self.filenames_in_collection if self.filenames_in_collection is not None else other.filenames_in_collection
-        return JafResultSet(new_indices, self.collection_size, new_collection_id, new_filenames)
-
-    def __contains__(self, item: Union[int,str]) -> bool:
-        """
-        Checks if an index or filename is in the result set.
-        If item is an int, checks if it's in indices.
-        If item is a str, checks if it's in filenames_in_collection.
-        """
-        if isinstance(item, int):
-            return item in self.indices
-        elif isinstance(item, str) and self.filenames_in_collection is not None:
-            return item in self.filenames_in_collection
-        return False
-    
-    def __bool__(self) -> bool:
-        """
-        Returns True if the result set contains any indices.
-        This allows using JafResultSet in boolean contexts.
-        """
-        return bool(self.indices)
-    
-    def __getitem__(self, index: int) -> int:
-        """
-        Allows indexing into the result set to get a specific index.
-        Raises IndexError if index is out of bounds.
-        """
-        if not isinstance(index, int):
-            raise TypeError("Index must be an integer.")
-        sorted_indices = sorted(self.indices)
-        if index < 0 or index >= len(sorted_indices):
-            raise IndexError("Index out of bounds.")
-        return sorted_indices[index]
-
-    def __hash__(self) -> int:
-        """
-        Returns a hash of the JafResultSet based on its indices, collection_size, and collection_id.
-        This allows JafResultSet to be used in sets or as dictionary keys.
-        """
-        return hash((frozenset(self.indices), self.collection_size, self.collection_id, tuple(self.filenames_in_collection or [])))
-
-    def __len__(self) -> int:
-        """Returns the number of indices in the result set."""
-        return len(self.indices)
-
-    def __iter__(self):
-        """Allows iteration over the sorted indices."""
-        return iter(sorted(list(self.indices))) # Iterate in a consistent order
+        return cls(
+            indices=indices,
+            collection_size=collection_size,
+            collection_id=data.get("collection_id"),
+            collection_source=collection_source,
+        )
 
     def __repr__(self) -> str:
-        filenames_info = f", filenames_in_collection=<{len(self.filenames_in_collection)} files>" if self.filenames_in_collection else ""
-        return (f"JafResultSet(indices=<{len(self.indices)} items>, "
+        return (f"JafResultSet(indices={sorted(list(self.indices))}, "
                 f"collection_size={self.collection_size}, "
-                f"collection_id='{self.collection_id}'{filenames_info})")
+                f"collection_id={self.collection_id}, "
+                f"collection_source={self.collection_source})")
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, JafResultSet):
@@ -220,7 +270,26 @@ class JafResultSet:
         return (self.indices == other.indices and
                 self.collection_size == other.collection_size and
                 self.collection_id == other.collection_id and
-                self.filenames_in_collection == other.filenames_in_collection) # Added filenames_in_collection
+                self.collection_source == other.collection_source)
+    
+    def __len__(self) -> int:
+        """Returns the number of matching indices in the result set."""
+        return len(self.indices)
+
+    def __iter__(self) -> Iterable[int]:
+        """Returns an iterator over the sorted indices."""
+        return iter(sorted(list(self.indices)))
+
+    def __contains__(self, item: object) -> bool:
+        """Checks if an index is in the result set."""
+        if not isinstance(item, int):
+            return False
+        return item in self.indices
+
+    def __ne__(self, other: object) -> bool:
+        """Checks for inequality with another object."""
+        result = self.__eq__(other)
+        return not result if result is not NotImplemented else NotImplemented
 
     # Optional: Overload operators for more Pythonic usage
     def __and__(self, other: 'JafResultSet') -> 'JafResultSet':
@@ -240,66 +309,34 @@ class JafResultSet:
 
     def get_matching_objects(self) -> List[Any]:
         """
-        Loads and returns the original data objects corresponding to the indices
-        in this result set.
-        
-        Raises:
-            JafResultSetError: If the original data source cannot be determined,
-                               a source file is not found, or if there's a data
-                               inconsistency (e.g., collection size mismatch).
+        Resolves indices back to the original data objects by interpreting
+        the `collection_source` metadata.
         """
-        all_original_objects: List[Any] = []
-        files_to_load: List[str] = []
-        source_description = ""
-
-        if self.filenames_in_collection:
-            files_to_load = self.filenames_in_collection
-            source_description = f"files ({len(files_to_load)}) from JafResultSet.filenames_in_collection"
-        elif self.collection_id and isinstance(self.collection_id, str) and os.path.isfile(self.collection_id):
-            files_to_load = [self.collection_id]
-            source_description = f"single file from JafResultSet.collection_id: '{self.collection_id}'"
-        else:
-            raise JafResultSetError(
-                "Cannot get matching objects: Original data source not determinable. "
-                "JafResultSet must have 'filenames_in_collection' populated, or 'collection_id' "
-                "must be a path to a single existing file."
-            )
-
-        for file_path in files_to_load: # files_to_load is sorted if from filenames_in_collection
-            # load_objects_from_file now handles FileNotFoundError and returns None
-            objects_from_single_file = load_objects_from_file(file_path)
-            
-            if objects_from_single_file is None:
-                # This implies a critical error like file not found (already logged by loader)
-                # or unparseable JSON for a .json file.
+        source_to_load = self.collection_source
+        
+        if not source_to_load:
+            # Fallback for older JRS or in-memory cases: try to use collection_id as a file path
+            if isinstance(self.collection_id, str) and os.path.isfile(self.collection_id):
+                logger.debug(f"No collection_source found, falling back to collection_id as file path: {self.collection_id}")
+                source_type = "jsonl" if self.collection_id.endswith(".jsonl") else "json_array"
+                source_to_load = {"type": source_type, "path": self.collection_id}
+            else:
                 raise JafResultSetError(
-                    f"Failed to load original data from '{file_path}' (source: {source_description}). "
-                    "Check logs for details. Cannot reliably get matching objects."
+                    "JafResultSet must have a resolvable 'collection_source' or a file-path 'collection_id' to resolve objects."
                 )
-            all_original_objects.extend(objects_from_single_file)
 
-        if len(all_original_objects) != self.collection_size:
-            raise JafResultSetError(
-                f"Data inconsistency: Loaded {len(all_original_objects)} original objects from {source_description}, "
-                f"but JafResultSet.collection_size is {self.collection_size}. Cannot reliably get matching objects."
+        try:
+            all_objects = load_collection(source_to_load)
+        except (NotImplementedError, FileNotFoundError) as e:
+            raise JafResultSetError(f"Failed to load data from collection source: {e}") from e
+
+        if len(all_objects) != self.collection_size:
+            logger.warning(
+                f"Data source size mismatch. Expected {self.collection_size} objects based on "
+                f"JafResultSet, but found {len(all_objects)} in source: {source_to_load}. "
+                "The original data source may have changed."
             )
 
-        matched_data = []
-        if not all_original_objects and self.indices:
-            # This means collection_size was > 0, files were found and processed by load_objects_from_file,
-            # but they all yielded empty lists (e.g. empty JSON arrays, or JSONL files with only blank/invalid lines).
-            # The collection_size check above should ideally catch this if it's a true mismatch.
-            # If collection_size is also 0, then this is fine.
-            # If collection_size > 0 but all_original_objects is empty, the size check above would fail.
-            # So this specific branch might be less likely if the size check is robust.
-            # However, if collection_size is N > 0, and files are empty, all_original_objects will be [],
-            # then len([]) != N, so the error above is raised.
-            # This means if we pass the size check, all_original_objects has the expected number of items.
-            pass # The size check handles this.
-
-        for index in sorted(list(self.indices)):
-            # The constructor of JafResultSet validates indices against collection_size.
-            # The collection_size check above ensures len(all_original_objects) matches.
-            # So, direct access should be safe.
-            matched_data.append(all_original_objects[index])
-        return matched_data
+        # This is inefficient for large files, but simple and correct.
+        # A future optimization could stream the file and pick out lines by index.
+        return [all_objects[i] for i in sorted(list(self.indices)) if i < len(all_objects)]

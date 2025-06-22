@@ -15,11 +15,11 @@ The `jaf filter` command, and boolean operations, produce a `JafResultSet`. This
 - `indices`: A sorted list of integers representing the indices of matched items from the original data.
 - `collection_size`: The total number of items in the original data collection.
 - `collection_id`: An identifier for the original data collection (e.g., file path, directory path, or a custom ID).
-- `filenames_in_collection` (optional): A sorted list of unique file paths that contributed to the collection, especially when filtering a directory.
+- `collection_source` (optional): A dictionary describing the source of the data, used to resolve indices back to original objects.
 
 Example `JafResultSet` (compact JSON output):
 ```json
-{"indices":[0,2],"collection_size":3,"collection_id":"/path/to/data.json","filenames_in_collection":["/path/to/data.json"]}
+{"indices":[0,2],"collection_size":3,"collection_id":"/path/to/data_dir","collection_source":{"type":"directory","path":"/path/to/data_dir","files":["/path/to/data_dir/a.json"]}}
 ```
 
 ## Query Format (AST)

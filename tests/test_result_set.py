@@ -53,7 +53,8 @@ class TestJafResultSetSerialization:
         expected = {
             "indices": [0, 1, 2], # to_dict sorts indices
             "collection_size": 5,
-            "collection_id": "id_test"
+            "collection_id": "id_test",
+            "collection_source": None
         }
         assert rs.to_dict() == expected
 
@@ -62,7 +63,8 @@ class TestJafResultSetSerialization:
         expected = {
             "indices": [],
             "collection_size": 3,
-            "collection_id": None
+            "collection_id": None,
+            "collection_source": None
         }
         assert rs.to_dict() == expected
 
@@ -76,6 +78,7 @@ class TestJafResultSetSerialization:
         assert rs.indices == {0, 1, 2}
         assert rs.collection_size == 5
         assert rs.collection_id == "id_test"
+        assert rs.collection_source is None
 
     def test_from_dict_indices_as_set(self):
         data = {
@@ -95,11 +98,11 @@ class TestJafResultSetSerialization:
             JafResultSet.from_dict({"indices": [1]})
 
     def test_from_dict_invalid_indices_type(self):
-        with pytest.raises(ValueError, match="JafResultSet.from_dict: Type error in input data: JafResultSet.from_dict: 'indices' must be a list or set."):
+        with pytest.raises(ValueError, match="JafResultSet.from_dict: Type error in input data: 'indices' must be a list or set."):
             JafResultSet.from_dict({"indices": "1,2,3", "collection_size": 5})
 
     def test_from_dict_invalid_collection_size_type(self):
-        with pytest.raises(ValueError, match="JafResultSet.from_dict: 'collection_size' must be an integer"):
+        with pytest.raises(ValueError, match="JafResultSet.from_dict: 'collection_size' must be an integer."):
             JafResultSet.from_dict({"indices": [1], "collection_size": "5"})
             
     def test_from_dict_indices_out_of_bounds(self):
