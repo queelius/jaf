@@ -115,6 +115,17 @@ def main():
         default="-",
         help="Path to the JafResultSet JSON file, or '-' for stdin. Defaults to stdin if no path is given."
     )
+
+    # --- 'info' Subcommand ---
+    info_parser = subparsers.add_parser("info", help="Display summary information about a JafResultSet.")
+    info_parser.add_argument(
+        "input_jrs",
+        type=str,
+        nargs='?',
+        default="-",
+        help="Path to the JafResultSet JSON file, or '-' for stdin. Defaults to stdin."
+    )
+
     args = parser.parse_args()
 
     logging.basicConfig(level=getattr(logging, args.log_level.upper()),
@@ -127,6 +138,8 @@ def main():
         handle_boolean_command(args)
     elif args.command == "resolve":
         handle_resolve_command(args)
+    elif args.command == "info":
+        handle_info_command(args)
     else:
         parser.print_help()
         sys.exit(1)
@@ -232,6 +245,44 @@ def handle_filter_command(args):
     except Exception as e_proc: # Catch any other unexpected errors
         logger.error(f"Unexpected JAF processing error: {e_proc}", exc_info=True)
         print(f"An unexpected error occurred during JAF processing: {e_proc}", file=sys.stderr)
+        sys.exit(1)
+
+def handle_info_command(args):
+    """Handles the 'info' subcommand."""
+    logger.debug(f"Info command with args: {args}")
+    try:
+        jrs = load_jaf_result_set_from_input(args.input_jrs, "input JafResultSet for info")
+        
+        print(f"JAF Result Set Summary")
+        print(f"-----------------------")
+        print(f"Collection ID:     {jrs.collection_id}")
+        print(f"Collection Size:   {jrs.collection_size}")
+        print(f"Number of Matches: {len(jrs.indices)}")
+        
+        if jrs.indices:
+            match_percentage = (len(jrs.indices) / jrs.collection_size) * 100 if jrs.collection_size > 0 else 0
+            print(f"Match Percentage:  {match_percentage:.2f}%")
+        
+        if jrs.collection_source:
+            print(f"Collection Source:")
+            source_type = jrs.collection_source.get("type", "N/A")
+            source_path = jrs.collection_source.get("path", "N/A")
+            print(f"  Type: {source_type}")
+            print(f"  Path: {source_path}")
+            if "files" in jrs.collection_source:
+                print(f"  Files ({len(jrs.collection_source['files'])}):")
+                for f in jrs.collection_source['files'][:5]: # Print first 5
+                    print(f"    - {f}")
+                if len(jrs.collection_source['files']) > 5:
+                    print(f"    ... and {len(jrs.collection_source['files']) - 5} more.")
+
+    except JafResultSetError as e:
+        logger.error(f"Error during info operation: {e}", exc_info=False)
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Unexpected error during info operation: {e}", exc_info=True)
+        print(f"An unexpected error occurred: {e}", file=sys.stderr)
         sys.exit(1)
 
 def handle_boolean_command(args):

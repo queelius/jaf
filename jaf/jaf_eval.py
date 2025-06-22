@@ -37,7 +37,7 @@ class jaf_eval:
         'gte?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 >= x2),
         ">=": adapt_jaf_operator(3, lambda x1, x2, obj: x1 >= x2),
         'lt?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 < x2),
-        '<': adapt_jaf_operator(3, lambda x1, x2, obj: x1 < x2),
+        'e<': adapt_jaf_operator(3, lambda x1, x2, obj: x1 < x2),
         'lte?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 <= x2),
         "<=": adapt_jaf_operator(3, lambda x1, x2, obj: x1 <= x2),
         'in?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 in x2),

@@ -1,4 +1,3 @@
-
 import pytest
 import json
 from pathlib import Path
@@ -84,3 +83,49 @@ def test_loader_missing_type():
     loader = CollectionLoader()
     with pytest.raises(ValueError, match="Collection source is missing 'type' key."):
         loader.load({})
+
+def test_load_from_path_empty_file(tmp_path):
+    empty_file = tmp_path / "empty.json"
+    empty_file.write_text("")
+    assert _load_from_path(str(empty_file)) == []
+
+def test_load_from_path_file_not_found():
+    with pytest.raises(FileNotFoundError):
+        _load_from_path("non_existent_file.json")
+
+def test_load_from_path_invalid_json(tmp_path):
+    invalid_file = tmp_path / "invalid.json"
+    invalid_file.write_text("{\"key\": \"value\"") # Incomplete JSON
+    with pytest.raises(ValueError, match="File is not a valid JSONL or a file containing a single JSON array"):
+        _load_from_path(str(invalid_file))
+
+def test_load_from_directory_missing_files_key():
+    with pytest.raises(ValueError, match="Directory source is missing 'files' key."):
+        _load_from_directory({"type": "directory"})
+
+def test_load_from_directory_file_not_found(setup_test_files):
+    dir_path = setup_test_files["dir_path"]
+    source = {
+        "type": "directory",
+        "files": [str(dir_path / "a.json"), "non_existent_file.jsonl"]
+    }
+    with pytest.raises(IOError, match="Failed to load or parse file 'non_existent_file.jsonl'"):
+        _load_from_directory(source)
+
+def test_collection_loader_register_custom_loader():
+    loader = CollectionLoader()
+    
+    def custom_loader(source):
+        return [{"data": source["custom_data"]}]
+        
+    loader.register_loader("custom", custom_loader)
+    
+    source = {"type": "custom", "custom_data": "my_test_data"}
+    data = loader.load(source)
+    assert data == [{"data": "my_test_data"}]
+
+def test_load_from_jsonl_file_empty(tmp_path):
+    empty_file = tmp_path / "empty.jsonl"
+    empty_file.write_text("")
+    assert _load_from_jsonl_file({"path": str(empty_file)}) == []
+
