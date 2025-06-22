@@ -289,12 +289,11 @@ class TestAtSyntaxErrorHandling:
         obj = {"name": "John"}
         
         # @ operator should expect exactly 1 argument
-        with pytest.raises(ValueError, match="'@' expects 1 argument"):
+        with pytest.raises(ValueError, match="'@' operator expects exactly one argument"):
             jaf_eval.eval(["@", "name", "extra"], obj)
         
-        with pytest.raises(ValueError, match="'@' expects 1 argument"):
+        with pytest.raises(ValueError, match="'@' operator expects exactly one argument"):
             jaf_eval.eval(["@"], obj)
-
 
 class TestAtSyntaxEquivalence:
     """Test that @ syntax is equivalent to traditional path syntax"""

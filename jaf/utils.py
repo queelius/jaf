@@ -47,12 +47,10 @@ def adapt_jaf_operator(n: int, func: callable) -> tuple[callable, int]:
         # So, `args` here are the data arguments for `func`.
         expected_data_args = n - 1 if n != -1 else -1 # -1 if func is variadic
         
-        # Argument count validation: Moved outside the main try block.
-        # This ValueError ("Unexpected number of arguments") should not be caught by the try-except ValueError below,
-        # allowing test_argument_count_validation to pass.
+        # Argument count validation:
+        # Skip check for variadic functions (where n is -1)
         if expected_data_args != -1 and len(args) != expected_data_args:
-            # Message matches the expectation of test_argument_count_validation
-            raise ValueError("Unexpected number of arguments")
+            raise ValueError(f"'{func_name}' expects {expected_data_args} arguments, got {len(args)}")
 
         try:
             # DEBUG: print(f"DEBUG ADAPT_JAF_OPERATOR: Func {func_name} called with args: {args}, obj keys: {list(obj.keys()) if isinstance(obj, dict) else 'not dict'}")

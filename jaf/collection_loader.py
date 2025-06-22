@@ -21,7 +21,9 @@ Key Components:
 
 import json
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Union
+from typing import Any, Callable, Dict, List, Optional, Union
+
+from jaf.path_evaluation import eval_path
 
 # A type alias for any value that can be represented in JSON. This correctly
 # reflects the data model JAF operates on, where a "document" can be any
@@ -50,16 +52,7 @@ class CollectionLoader:
         self._register_default_loaders()
 
     def register_loader(self, source_type: str, func: LoaderFunc):
-        """
-        Registers a new loader function for a given source type.
-
-        This allows for extending JAF's data loading capabilities at runtime.
-
-        Args:
-            source_type: The unique string identifier for the source type
-                         (e.g., "database_query").
-            func: The function to execute when this source type is encountered.
-        """
+        """Registers or overwrites a loader function for a given source type."""
         self._loaders[source_type] = func
 
     def load(self, collection_source: Dict[str, Any]) -> List[JsonValue]:
@@ -85,22 +78,28 @@ class CollectionLoader:
         if not source_type:
             raise ValueError("Collection source is missing 'type' key.")
 
-        loader_func = self._loaders.get(source_type)
-        if not loader_func:
+        loader_fn = self._loaders.get(source_type)
+        if not loader_fn:
             raise ValueError(f"No loader registered for source type: '{source_type}'")
-
-        return loader_func(collection_source)
+        
+        return loader_fn(collection_source)
 
     def _register_default_loaders(self):
         """Pre-populates the loader with standard JAF source types."""
-        self.register_loader("json_array", _load_from_json_array_file)
-        self.register_loader("jsonl", _load_from_jsonl_file)
         self.register_loader("directory", _load_from_directory)
+        self.register_loader("jsonl", _load_from_path)
+        self.register_loader("json_array", _load_from_path)
+        self.register_loader("buffered_stdin", _load_from_buffered_stdin)
 
 
-# --- Default Loader Implementations ---
+# --- Loader Implementations ---
 
-def _load_from_path(path_str: str) -> List[JsonValue]:
+def _load_from_buffered_stdin(source: dict) -> List[Any]:
+    """Loader for data buffered directly in the collection source."""
+    return source.get("content", [])
+
+
+def _load_from_path(source: Dict[str, Any]) -> List[JsonValue]:
     """
     Helper to load a collection from a single file path.
 
@@ -108,15 +107,19 @@ def _load_from_path(path_str: str) -> List[JsonValue]:
     standard files containing a single JSON array.
 
     Args:
-        path_str: The string path to the file.
+        source: The collection source dictionary, must contain a "path" key.
 
     Returns:
         A list of JSON documents.
 
     Raises:
         FileNotFoundError: If the path does not exist or is not a file.
-        ValueError: If the file is not a valid JSONL or JSON array.
+        ValueError: If the file is not a valid JSONL or JSON array, or if 'path' key is missing.
     """
+    path_str = source.get("path")
+    if not path_str:
+        raise ValueError("Path-based source is missing 'path' key.")
+    
     path = Path(path_str)
     if not path.is_file():
         raise FileNotFoundError(f"Data source file not found: {path}")
@@ -149,30 +152,8 @@ def _load_from_path(path_str: str) -> List[JsonValue]:
             ) from e
 
 
-def _load_from_json_array_file(source: Dict[str, Any]) -> List[JsonValue]:
-    """Loader for a file containing a single JSON array."""
-    path = Path(source["path"])
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, list):
-        raise ValueError(f"File is not a JSON array: {path}")
-    return data
-
-
-def _load_from_jsonl_file(source: Dict[str, Any]) -> List[JsonValue]:
-    """Loader for a JSONL file (one JSON document per line)."""
-    path = Path(source["path"])
-    content = path.read_text(encoding="utf-8")
-    if not content.strip():
-        return []
-    return [json.loads(line) for line in content.strip().splitlines() if line.strip()]
-
-
-def _load_from_directory(source: Dict[str, Any]) -> List[JsonValue]:
-    """
-    Loader for a directory containing multiple JSON or JSONL files.
-
-    It aggregates documents from all specified files into a single collection.
-    """
+def _load_from_directory(source: dict) -> List[Any]:
+    """Loader for 'directory' source type."""
     all_objects: List[JsonValue] = []
     file_paths = source.get("files")
     if not file_paths:
@@ -180,7 +161,8 @@ def _load_from_directory(source: Dict[str, Any]) -> List[JsonValue]:
 
     for file_path in file_paths:
         try:
-            all_objects.extend(_load_from_path(file_path))
+            # FIX: Pass a dictionary to _load_from_path, not a raw string.
+            all_objects.extend(_load_from_path({"path": file_path}))
         except (IOError, ValueError, FileNotFoundError) as e:
             # Propagate error with context about which file failed.
             raise IOError(f"Failed to load or parse file '{file_path}' in directory source: {e}") from e

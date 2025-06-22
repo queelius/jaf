@@ -8,7 +8,7 @@ from .jaf import jaf, jafError
 from .result_set import JafResultSet, JafResultSetError
 from . import __version__
 from .jaf_eval import jaf_eval
-from .io_utils import walk_data_files, load_objects_from_file, load_collection
+from .io_utils import walk_data_files, load_objects_from_file, load_collection, load_objects_from_string
 from .path_conversion import string_to_path_ast
 from .path_exceptions import PathSyntaxError
 
@@ -42,18 +42,22 @@ def main():
     filter_parser.add_argument(
         "input_source",
         type=str,
-        help="Path to a JSON/JSONL file or a directory."
+        nargs='?',
+        default="-",
+        help="Path to the input JSON/JSONL file or directory. Defaults to '-' to read from stdin."
     )
     filter_parser.add_argument(
-        "--query",
-        type=str,
+        "-q", "--query",
         required=True,
-        help="JAF query string (JSON AST)."
+        type=str,
+        help="A JAF query string (in JSON format) to filter the data."
     )
     filter_parser.add_argument(
-        "--recursive",
-        action="store_true",
-        help="Recursively search directories."
+        "--stdin-max-buffer-size",
+        type=int,
+        default=1048576, # 1 MiB
+        metavar="BYTES",
+        help="Max size in bytes to buffer stdin for later resolution. If stdin exceeds this, the result set will not be resolvable. Default: 1048576 (1 MiB)."
     )
     filter_parser.add_argument(
         "--collection-id",
@@ -97,7 +101,7 @@ def main():
                 help="Path to the second JafResultSet. Cannot be used with --query."
             )
             group.add_argument(
-                "--query",
+                "-q", "--query",
                 type=str,
                 help="A JAF query to run against the first input's data source. Cannot be used with a second JRS path."
             )
@@ -214,21 +218,46 @@ def handle_filter_command(args):
         query_ast = json.loads(args.query)
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JAF query JSON: {e}\n")
-        print(f"Error: JAF query is not valid JSON. {e}", file=sys.stderr)
         sys.exit(1)
 
     if not isinstance(query_ast, list) and query_ast is not None:
         logger.error(f"Invalid query AST type: {type(query_ast)}")
-        print(f"Error: Query AST is not a list or null: {type(query_ast)}", file=sys.stderr)
         sys.exit(1)
 
-    input_is_directory = os.path.isdir(args.input_source)
+    input_source_path = args.input_source
     all_objects_to_filter: List[Any] = []
     collection_source: Dict[str, Any] = {}
     effective_collection_id: Optional[Any] = args.collection_id
 
-    if input_is_directory:
-        abs_dir_path = os.path.abspath(args.input_source)
+    if input_source_path == "-":
+        logger.info("Reading data from stdin.")
+        stdin_content = sys.stdin.read()
+        
+        if len(stdin_content.encode('utf-8')) > args.stdin_max_buffer_size:
+            logger.warning(
+                f"stdin content size ({len(stdin_content.encode('utf-8'))} bytes) exceeds --stdin-max-buffer-size "
+                f"({args.stdin_max_buffer_size} bytes). The resulting JafResultSet will not be resolvable."
+            )
+            loaded_objects, detected_format = load_objects_from_string(stdin_content)
+            collection_source = {"type": "stdin", "format": detected_format}
+        else:
+            logger.info("stdin content is within buffer size limit; result set will be resolvable.")
+            loaded_objects, detected_format = load_objects_from_string(stdin_content)
+            # Embed the actual data into the source for later resolution.
+            collection_source = {
+                "type": "buffered_stdin",
+                "format": detected_format,
+                "content": loaded_objects
+            }
+
+        if loaded_objects:
+            all_objects_to_filter = loaded_objects
+        
+        if not effective_collection_id:
+            effective_collection_id = "<stdin>"
+
+    elif os.path.isdir(input_source_path):
+        abs_dir_path = os.path.abspath(input_source_path)
         if not effective_collection_id:
             effective_collection_id = abs_dir_path
         
@@ -246,8 +275,8 @@ def handle_filter_command(args):
                 "files": sorted(list(set(file_paths_contributing)))
             }
 
-    elif os.path.isfile(args.input_source):
-        abs_file_path = os.path.abspath(args.input_source)
+    elif os.path.isfile(input_source_path):
+        abs_file_path = os.path.abspath(input_source_path)
         if not effective_collection_id:
             effective_collection_id = abs_file_path
 
@@ -261,7 +290,7 @@ def handle_filter_command(args):
             collection_source = {"type": "json_array", "path": abs_file_path}
 
     else:
-        print(f"Error: Input source '{args.input_source}' is not a valid file or directory.", file=sys.stderr)
+        print(f"Error: Input source '{input_source_path}' is not a valid file, directory, or stdin ('-').", file=sys.stderr)
         sys.exit(1)
 
     if not all_objects_to_filter:

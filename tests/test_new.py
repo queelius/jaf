@@ -79,7 +79,7 @@ class TestAdaptJafOperator:  # Renamed class to reflect the function being teste
         wrapped_func, n = adapt_jaf_operator(2, simple_func)
         
         # Wrong number of arguments should raise ValueError
-        with pytest.raises(ValueError, match="Unexpected number of arguments"):
+        with pytest.raises(ValueError, match="'simple_func' expects 1 arguments, got 3"):
             wrapped_func(1, 2, 3, obj={})
     
     def test_empty_list_handling(self):

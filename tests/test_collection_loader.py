@@ -1,7 +1,7 @@
 import pytest
 import json
 from pathlib import Path
-from jaf.collection_loader import CollectionLoader, _load_from_path, _load_from_json_array_file, _load_from_jsonl_file, _load_from_directory
+from jaf.collection_loader import CollectionLoader, _load_from_path, _load_from_directory
 
 @pytest.fixture
 def setup_test_files(tmp_path):
@@ -25,16 +25,6 @@ def setup_test_files(tmp_path):
         "dir_path": dir_path
     }
 
-def test_load_from_json_array_file(setup_test_files):
-    source = {"type": "json_array", "path": str(setup_test_files["json_array_file"])}
-    data = _load_from_json_array_file(source)
-    assert data == [{"id": 1, "type": "array"}]
-
-def test_load_from_jsonl_file(setup_test_files):
-    source = {"type": "jsonl", "path": str(setup_test_files["jsonl_file"])}
-    data = _load_from_jsonl_file(source)
-    assert data == [{"id": 2, "type": "jsonl"}, {"id": 3, "type": "jsonl"}]
-
 def test_load_from_directory(setup_test_files):
     dir_path = setup_test_files["dir_path"]
     source = {
@@ -45,11 +35,13 @@ def test_load_from_directory(setup_test_files):
     assert data == [{"id": 4, "type": "dir_json"}, {"id": 5, "type": "dir_jsonl"}]
 
 def test_load_from_path_json_array(setup_test_files):
-    data = _load_from_path(str(setup_test_files["json_array_file"]))
+    source = {"path": str(setup_test_files["json_array_file"])}
+    data = _load_from_path(source)
     assert data == [{"id": 1, "type": "array"}]
 
 def test_load_from_path_jsonl(setup_test_files):
-    data = _load_from_path(str(setup_test_files["jsonl_file"]))
+    source = {"path": str(setup_test_files["jsonl_file"])}
+    data = _load_from_path(source)
     assert data == [{"id": 2, "type": "jsonl"}, {"id": 3, "type": "jsonl"}]
 
 def test_collection_loader_dispatch(setup_test_files):
@@ -87,17 +79,20 @@ def test_loader_missing_type():
 def test_load_from_path_empty_file(tmp_path):
     empty_file = tmp_path / "empty.json"
     empty_file.write_text("")
-    assert _load_from_path(str(empty_file)) == []
+    source = {"path": str(empty_file)}
+    assert _load_from_path(source) == []
 
 def test_load_from_path_file_not_found():
+    source = {"path": "non_existent_file.json"}
     with pytest.raises(FileNotFoundError):
-        _load_from_path("non_existent_file.json")
+        _load_from_path(source)
 
 def test_load_from_path_invalid_json(tmp_path):
     invalid_file = tmp_path / "invalid.json"
     invalid_file.write_text("{\"key\": \"value\"") # Incomplete JSON
+    source = {"path": str(invalid_file)}
     with pytest.raises(ValueError, match="File is not a valid JSONL or a file containing a single JSON array"):
-        _load_from_path(str(invalid_file))
+        _load_from_path(source)
 
 def test_load_from_directory_missing_files_key():
     with pytest.raises(ValueError, match="Directory source is missing 'files' key."):
@@ -123,9 +118,4 @@ def test_collection_loader_register_custom_loader():
     source = {"type": "custom", "custom_data": "my_test_data"}
     data = loader.load(source)
     assert data == [{"data": "my_test_data"}]
-
-def test_load_from_jsonl_file_empty(tmp_path):
-    empty_file = tmp_path / "empty.jsonl"
-    empty_file.write_text("")
-    assert _load_from_jsonl_file({"path": str(empty_file)}) == []
 

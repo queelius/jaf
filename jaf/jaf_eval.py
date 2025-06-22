@@ -2,6 +2,7 @@ import datetime
 import re
 import rapidfuzz
 import logging
+import functools
 from .path_evaluation import exists, eval_path
 from .path_types import PathValues
 from .utils import adapt_jaf_operator
@@ -14,47 +15,77 @@ logger = logging.getLogger(__name__)
 class jafError(Exception):
     pass
 
+def _jaf_subtract(*args):
+    if not args: return 0
+    if len(args) == 1: return -args[0]
+    return functools.reduce(lambda x, y: x - y, args)
+
+def _jaf_divide(*args):
+    if not args: raise ValueError("Division operator requires at least one argument.")
+    if len(args) == 1: return 1 / args[0]
+    try:
+        return functools.reduce(lambda x, y: x / y, args)
+    except ZeroDivisionError:
+        raise ValueError("Division by zero.")
+
+
 class jaf_eval:
     """
     JSON Abstract Filter (JAF) evaluator class. This only applies to a single
     object in the array.
     """
     
-    # Special forms that need custom evaluation logic
+    # Special forms don't have their arguments evaluated before the operator is called.
+    # This allows for custom logic like short-circuiting (and, or) or preventing evaluation (literal).
     special_forms = {
-        'path', '@', 'if', 'and', 'or', 'not', 'exists?'
+        'if', 'and', 'or', 'not', 'exists?', 'path', '@', 'self', 'literal'
     }
-    
+
     # Regular functions that evaluate all arguments first
     funcs = {
         # predicates with strict type checking
-        'eq?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 == x2 and type(x1) == type(x2)),
-        "=": adapt_jaf_operator(3, lambda x1, x2, obj: x1 == x2 and type(x1) == type(x2)),
-        'neq?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 != x2 or type(x1) != type(x2)),
-        "!=": adapt_jaf_operator(3, lambda x1, x2, obj: x1 != x2 or type(x1) != type(x2)),
+        'eq?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 == x2),
+        "=": adapt_jaf_operator(3, lambda x1, x2, obj: x1 == x2),
+        'neq?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 != x2),
+        "!=": adapt_jaf_operator(3, lambda x1, x2, obj: x1 != x2),
         'gt?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 > x2),
         ">": adapt_jaf_operator(3, lambda x1, x2, obj: x1 > x2),
         'gte?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 >= x2),
         ">=": adapt_jaf_operator(3, lambda x1, x2, obj: x1 >= x2),
         'lt?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 < x2),
-        'e<': adapt_jaf_operator(3, lambda x1, x2, obj: x1 < x2),
+        '<': adapt_jaf_operator(3, lambda x1, x2, obj: x1 < x2),
         'lte?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 <= x2),
         "<=": adapt_jaf_operator(3, lambda x1, x2, obj: x1 <= x2),
         'in?': adapt_jaf_operator(3, lambda x1, x2, obj: x1 in x2),
+        'contains?': adapt_jaf_operator(3, lambda container, item, obj: item in container),
         'starts-with?': adapt_jaf_operator(3, lambda start, value, obj: value.startswith(start)),
         'ends-with?': adapt_jaf_operator(3, lambda end, value, obj: value.endswith(end)),
+        'is-empty?': adapt_jaf_operator(2, lambda x, obj: x is None or (hasattr(x, '__len__') and len(x) == 0)),
 
         # string matching
         'regex-match?': adapt_jaf_operator(3, lambda pattern, value, obj: re.match(pattern, value) is not None),
         'close-match?': adapt_jaf_operator(3, lambda x1, x2, obj: rapidfuzz.fuzz.ratio(x1, x2) > 80),
         'partial-match?': adapt_jaf_operator(3, lambda x1, x2, obj: rapidfuzz.fuzz.partial_ratio(x1, x2) > 80),
 
-        # value extractors
-        'length': adapt_jaf_operator(2, lambda x, obj: len(x)),
-        'type': adapt_jaf_operator(2, lambda x, obj: type(x).__name__),
-        'keys': adapt_jaf_operator(2, lambda x, obj: list(x.keys())),
-        'values': adapt_jaf_operator(2, lambda x, obj: list(x.values())),
+        # --- Type Predicates ---
+        'is-string?': adapt_jaf_operator(2, lambda x, obj: isinstance(x, str)),
+        'is-number?': adapt_jaf_operator(2, lambda x, obj: isinstance(x, (int, float))),
+        'is-array?': adapt_jaf_operator(2, lambda x, obj: isinstance(x, list)),
+        'is-object?': adapt_jaf_operator(2, lambda x, obj: isinstance(x, dict)),
+        'is-null?': adapt_jaf_operator(2, lambda x, obj: x is None),
+        'is-empty?': adapt_jaf_operator(2, lambda x, obj: x is None or (hasattr(x, '__len__') and len(x) == 0)),
 
+        # value extractors
+        'length': adapt_jaf_operator(2, lambda x, obj: len(x) if hasattr(x, '__len__') else None),
+        'type': adapt_jaf_operator(2, lambda x, obj: type(x).__name__),
+        'keys': adapt_jaf_operator(2, lambda d, obj: list(d.keys())),
+        'values': adapt_jaf_operator(2, lambda x, obj: list(x.values())),
+        'first': adapt_jaf_operator(2, lambda l, obj: l[0] if l else None),
+        'last': adapt_jaf_operator(2, lambda l, obj: l[-1] if l else None),
+        'get': adapt_jaf_operator(3, lambda l, i, obj: l[i] if isinstance(l, list) and isinstance(i, int) and -len(l) <= i < len(l) else None),
+        'items': adapt_jaf_operator(2, lambda x, obj: list(x.items()) if isinstance(x, dict) else []),
+        'unique': adapt_jaf_operator(2, lambda l, obj: list(dict.fromkeys(l))),
+        
         # datetime functions
         'now': adapt_jaf_operator(1, lambda obj: datetime.datetime.now()),
         'date': adapt_jaf_operator(2, lambda x, obj: datetime.datetime.strptime(x, '%Y-%m-%d')),
@@ -66,6 +97,15 @@ class jaf_eval:
         # string functions
         'lower-case': adapt_jaf_operator(2, lambda s, obj: s.lower()),
         'upper-case': adapt_jaf_operator(2, lambda s, obj: s.upper()),
+        'trim': adapt_jaf_operator(2, lambda s, obj: s.strip() if isinstance(s, str) else s),
+        'split': adapt_jaf_operator(3, lambda s, delim, obj: s.split(delim)),
+        'join': adapt_jaf_operator(3, lambda l, delim, obj: delim.join(l)),
+
+        # Arithmetic Operators'+': adapt_jaf_operator(-1, lambda *args, obj: functools.reduce(lambda x, y: x + y, args, 0)),
+        '-': adapt_jaf_operator(-1, _jaf_subtract),
+        '*': adapt_jaf_operator(-1, lambda *args, obj: functools.reduce(lambda x, y: x * y, args, 1)),
+        '/': adapt_jaf_operator(-1, _jaf_divide),
+        '%': adapt_jaf_operator(3, lambda x, y, obj: x % y),
     }
 
     @staticmethod
@@ -113,10 +153,19 @@ class jaf_eval:
     @staticmethod
     def _eval_special_form(op, args, obj):
         """Handle special forms that need custom evaluation logic"""
-        
-        if op == 'path' or op == '@':
+        if op == 'self':
+            if args:
+                raise ValueError("'self' operator takes no arguments.")
+            return obj
+
+        elif op == 'literal':
             if len(args) != 1:
-                raise ValueError(f"'{op}' expects 1 argument, got {len(args)}")
+                raise ValueError("'literal' operator expects exactly one argument.")
+            return args[0] # Return the argument unevaluated
+
+        elif op == 'path' or op == '@':
+            if len(args) != 1:
+                raise ValueError(f"'{op}' operator expects exactly one argument (a path string).")
             path_expr = args[0]
             
             if isinstance(path_expr, str):

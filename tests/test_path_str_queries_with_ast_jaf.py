@@ -181,16 +181,19 @@ class TestJafEvalPathStrings(unittest.TestCase):
     def test_path_argument_validation(self):
         """Test validation of path arguments"""
         # Test wrong number of arguments
-        with self.assertRaisesRegex(ValueError, "'path' expects 1 argument, got 0"):
+        with self.assertRaisesRegex(ValueError, "'path' operator expects exactly one argument"):
             jaf_eval.eval(["path"], self.test_data)
         
-        with self.assertRaisesRegex(ValueError, "'path' expects 1 argument, got 2"):
+        
+    def test_path_argument_validation_2(self):
+        with self.assertRaisesRegex(ValueError, "'path' operator expects exactly one argument"):
             jaf_eval.eval(["path", "user.name", "extra"], self.test_data)
         
+    def test_path_argument_validation_3(self):
         # Test invalid path argument types
         with self.assertRaisesRegex(ValueError, "path argument must be a list of path components"):
             jaf_eval.eval(["path", 123], self.test_data)
-
+    
     def test_path_component_validation(self):
         """Test validation of path components after string conversion"""
         # This would be caught after string_to_path_ast conversion
