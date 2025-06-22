@@ -1,6 +1,6 @@
 # `jaf` - JSON Array Filter
 
-`jaf` is a simple, focused filtering system for JSON arrays, with added support for boolean algebra on filter results and resolving results to original data. It's designed to be **not Turing-complete** and focuses solely on filtering with predictable boolean results.
+`jaf` is a simple, focused filtering system for arrays of JSON values, with added support for boolean algebra on filter results and resolving results to original data. It's designed to be **not Turing-complete** and focuses solely on filtering with predictable boolean results.
 
 ## Core Philosophy
 
@@ -114,6 +114,8 @@ For detailed information on all operators, path components, `JafResultSet` struc
 ```python
 from jaf import jaf, JafResultSet
 
+# While this example uses an array of objects, `jaf` can process an
+# array of any valid JSON values (strings, numbers, lists, etc.).
 data = [
     {"id": 1, "name": "Alice", "tags": ["dev", "python"], "status": "active"},
     {"id": 2, "name": "Bob", "tags": ["qa", "java"], "status": "inactive"},

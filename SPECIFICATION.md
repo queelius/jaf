@@ -13,7 +13,7 @@ JAF is a simple, focused domain-specific language for filtering JSON arrays. It'
 
 ## Data Model
 
-**Input to `jaf` function**: `Array<Object>` - An array of JSON objects.
+**Input to `jaf` function**: `Array<JsonValue>` - An array of any valid JSON values.
 **Output of `jaf` function**: `JafResultSet` - An object representing the filter results.
 
 ## `JafResultSet` Object
@@ -25,7 +25,7 @@ A `JafResultSet` is a JSON-serializable object that represents the outcome of a 
 When serialized to JSON (e.g., by the CLI), a `JafResultSet` has the following structure:
 
 -   `indices`: `Array<Number>` (integer)
-    -   A sorted list of unique, 0-based indices of the objects from the original data array that matched the query.
+    -   A sorted list of unique, 0-based indices of the items from the original data array that matched the query.
 -   `collection_size`: `Number` (integer)
     -   The total number of items in the original data collection from which the indices were derived. This is crucial for operations like `NOT`.
 -   `collection_id`: `Any` (string, number, null, etc.)
@@ -92,7 +92,7 @@ All three forms are functionally equivalent to the traditional `["path", ...]` s
 
 ## Path System
 
-The JAF Path System is a small, dedicated sub-language for data traversal within JSON objects. Paths are **lists of tagged components** used within the `["path", path_components_list]` special form or the `@` notation. This tagged structure (its own AST) provides a uniform and explicit way to define how to traverse the JSON data.
+The JAF Path System is a small, dedicated sub-language for data traversal within JSON structures. Paths are **lists of tagged components** used within the `["path", path_components_list]` special form or the `@` notation. This tagged structure (its own AST) provides a uniform and explicit way to define how to traverse the JSON data.
 
 Each component in the `path_components_list` is a list itself, where the first element is a tag (string) indicating the type of path segment, and subsequent elements are arguments for that segment type.
 
@@ -304,8 +304,7 @@ When a `PathValues` object (the result of a path expression involving components
 - If the function being called is a **predicate** (typically its name ends with `?`):
   - The predicate evaluates to `true` if **there exists at least one combination** of expanded arguments for which the predicate's condition holds.
   - If all combinations evaluate to `false`, or if any `PathValues` argument was initially empty (resulting in no combinations to test), the overall predicate evaluates to `false`.
-  - **Example**: `["eq?", ["path", [["key", "items"], ["wc_level"], ["key", "status"]]], "completed"]` or `["eq?", "@items.*.status", "completed"]`.
-    Let `S = eval_path(obj, path_expr_for_items_status)`. The predicate is true if ∃ *s* ∈ `S` such that `eq?(s, "completed")` is true.
+  - **Example**: `["eq?", ["path", [["key", "items"], ["wc_level"], ["key", "status"]]], "completed"]` or `["eq?", "@items.*.status", "completed"]`. Let `S = eval_path(obj, path_expr_for_items_status)`. The predicate is true if ∃ *s* ∈ `S` such that `eq?(s, "completed")` is true.
   - Type errors or attribute errors encountered during the evaluation of a specific combination for a predicate cause that particular combination to yield `false`. The overall predicate can still be `true` if another combination succeeds.
 
 **c. Value Extractor/Transformer Evaluation:**
