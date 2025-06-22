@@ -1,0 +1,86 @@
+
+import pytest
+import json
+from pathlib import Path
+from jaf.collection_loader import CollectionLoader, _load_from_path, _load_from_json_array_file, _load_from_jsonl_file, _load_from_directory
+
+@pytest.fixture
+def setup_test_files(tmp_path):
+    # Setup for json_array
+    json_array_file = tmp_path / "test_array.json"
+    json_array_file.write_text(json.dumps([{"id": 1, "type": "array"}]))
+
+    # Setup for jsonl
+    jsonl_file = tmp_path / "test.jsonl"
+    jsonl_file.write_text('{\"id\": 2, \"type\": \"jsonl\"}\n{\"id\": 3, \"type\": \"jsonl\"}')
+
+    # Setup for directory
+    dir_path = tmp_path / "test_dir"
+    dir_path.mkdir()
+    (dir_path / "a.json").write_text(json.dumps([{"id": 4, "type": "dir_json"}]))
+    (dir_path / "b.jsonl").write_text('{\"id\": 5, \"type\": \"dir_jsonl\"}')
+
+    return {
+        "json_array_file": json_array_file,
+        "jsonl_file": jsonl_file,
+        "dir_path": dir_path
+    }
+
+def test_load_from_json_array_file(setup_test_files):
+    source = {"type": "json_array", "path": str(setup_test_files["json_array_file"])}
+    data = _load_from_json_array_file(source)
+    assert data == [{"id": 1, "type": "array"}]
+
+def test_load_from_jsonl_file(setup_test_files):
+    source = {"type": "jsonl", "path": str(setup_test_files["jsonl_file"])}
+    data = _load_from_jsonl_file(source)
+    assert data == [{"id": 2, "type": "jsonl"}, {"id": 3, "type": "jsonl"}]
+
+def test_load_from_directory(setup_test_files):
+    dir_path = setup_test_files["dir_path"]
+    source = {
+        "type": "directory",
+        "files": [str(dir_path / "a.json"), str(dir_path / "b.jsonl")]
+    }
+    data = _load_from_directory(source)
+    assert data == [{"id": 4, "type": "dir_json"}, {"id": 5, "type": "dir_jsonl"}]
+
+def test_load_from_path_json_array(setup_test_files):
+    data = _load_from_path(str(setup_test_files["json_array_file"]))
+    assert data == [{"id": 1, "type": "array"}]
+
+def test_load_from_path_jsonl(setup_test_files):
+    data = _load_from_path(str(setup_test_files["jsonl_file"]))
+    assert data == [{"id": 2, "type": "jsonl"}, {"id": 3, "type": "jsonl"}]
+
+def test_collection_loader_dispatch(setup_test_files):
+    loader = CollectionLoader()
+    
+    # Test json_array
+    source_array = {"type": "json_array", "path": str(setup_test_files["json_array_file"])}
+    data_array = loader.load(source_array)
+    assert data_array == [{"id": 1, "type": "array"}]
+
+    # Test jsonl
+    source_jsonl = {"type": "jsonl", "path": str(setup_test_files["jsonl_file"])}
+    data_jsonl = loader.load(source_jsonl)
+    assert data_jsonl == [{"id": 2, "type": "jsonl"}, {"id": 3, "type": "jsonl"}]
+
+    # Test directory
+    dir_path = setup_test_files["dir_path"]
+    source_dir = {
+        "type": "directory",
+        "files": [str(dir_path / "a.json"), str(dir_path / "b.jsonl")]
+    }
+    data_dir = loader.load(source_dir)
+    assert data_dir == [{"id": 4, "type": "dir_json"}, {"id": 5, "type": "dir_jsonl"}]
+
+def test_loader_unknown_type():
+    loader = CollectionLoader()
+    with pytest.raises(ValueError, match="No loader registered for source type: 'unknown'"):
+        loader.load({"type": "unknown"})
+
+def test_loader_missing_type():
+    loader = CollectionLoader()
+    with pytest.raises(ValueError, match="Collection source is missing 'type' key."):
+        loader.load({})

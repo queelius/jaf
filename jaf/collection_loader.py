@@ -125,24 +125,28 @@ def _load_from_path(path_str: str) -> List[JsonValue]:
     if not content:
         return []
 
-    # Try parsing as JSONL first, as it's more specific.
-    if "\n" in content:
-        try:
-            return [json.loads(line) for line in content.splitlines() if line.strip()]
-        except json.JSONDecodeError:
-            # If it fails, it might be a single pretty-printed JSON array.
-            # We'll let the next block handle it.
-            pass
-
-    # Fallback to parsing as a single JSON value, expecting a list.
+    # First, try to parse the entire content as a single JSON value.
+    # This handles files containing a JSON array, or single-line JSONL files
+    # which are just a single valid JSON document.
     try:
         data = json.loads(content)
         if isinstance(data, list):
+            # It's a file with a JSON array. This is a valid collection.
             return data
-        # If it's a valid JSON value but not a list, it's an error for a collection.
-        raise ValueError(f"File contains a single JSON value that is not an array: {path}")
-    except json.JSONDecodeError as e:
-        raise ValueError(f"File is not a valid JSONL or JSON array: {path}") from e
+        else:
+            # It's a file with a single JSON document that is not an array.
+            # This is treated as a collection of one document (e.g., single-line JSONL).
+            return [data]
+    except json.JSONDecodeError:
+        # If parsing the whole content fails, it might be a multi-line JSONL file.
+        # Now, try to parse it line by line.
+        try:
+            return [json.loads(line) for line in content.splitlines() if line.strip()]
+        except json.JSONDecodeError as e:
+            # If both attempts fail, the format is invalid.
+            raise ValueError(
+                f"File is not a valid JSONL or a file containing a single JSON array: {path}"
+            ) from e
 
 
 def _load_from_json_array_file(source: Dict[str, Any]) -> List[JsonValue]:
