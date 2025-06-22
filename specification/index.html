@@ -74,7 +74,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#jaf-json-array-filter---specification-v11" class="md-skip">
+        <a href="#jaf-json-array-filter---specification-v13" class="md-skip">
           Skip to content
         </a>
       
@@ -445,6 +445,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-special-path-notation" class="md-nav__link">
+    <span class="md-ellipsis">
+      @ Special Path Notation
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#path-system" class="md-nav__link">
     <span class="md-ellipsis">
       Path System
@@ -593,6 +602,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#-notation-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      @ Notation Errors
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#type-errors" class="md-nav__link">
     <span class="md-ellipsis">
       Type Errors
@@ -647,6 +665,15 @@
   <a href="#path-system-examples" class="md-nav__link">
     <span class="md-ellipsis">
       Path System Examples
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#advanced--syntax-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      Advanced @ Syntax Examples
     </span>
   </a>
   
@@ -715,8 +742,7 @@
   
 
 
-<!-- Copied from SPECIFICATION.md -->
-<h1 id="jaf-json-array-filter---specification-v11">JAF (JSON Array Filter) - Specification v1.1<a class="headerlink" href="#jaf-json-array-filter---specification-v11" title="Permanent link">&para;</a></h1>
+<h1 id="jaf-json-array-filter---specification-v13">JAF (JSON Array Filter) - Specification v1.3<a class="headerlink" href="#jaf-json-array-filter---specification-v13" title="Permanent link">&para;</a></h1>
 <h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
 <p>JAF is a simple, focused domain-specific language for filtering JSON arrays. It's designed to be <strong>not Turing-complete</strong> and focuses solely on filtering with predictable boolean results. It also supports boolean algebraic operations on sets of filter results.</p>
 <h2 id="core-philosophy">Core Philosophy<a class="headerlink" href="#core-philosophy" title="Permanent link">&para;</a></h2>
@@ -730,8 +756,8 @@
 <p><strong>Input to <code>jaf</code> function</strong>: <code>Array&lt;Object&gt;</code> - An array of JSON objects.
 <strong>Output of <code>jaf</code> function</strong>: <code>JafResultSet</code> - An object representing the filter results.</p>
 <h2 id="jafresultset-object"><code>JafResultSet</code> Object<a class="headerlink" href="#jafresultset-object" title="Permanent link">&para;</a></h2>
-<p>A <code>JafResultSet</code> represents the set of indices from a data collection that satisfy a JAF query, along with metadata to ensure logical consistency when combining results or resolving them back to original data.</p>
-<p><strong>Attributes / JSON Structure:</strong></p>
+<p>A <code>JafResultSet</code> is a JSON-serializable object that represents the outcome of a <code>jaf</code> filter operation.</p>
+<p><strong>Core Attributes:</strong></p>
 <p>When serialized to JSON (e.g., by the CLI), a <code>JafResultSet</code> has the following structure:</p>
 <ul>
 <li><code>indices</code>: <code>Array&lt;Number&gt;</code> (integer)<ul>
@@ -746,26 +772,95 @@
 <li>An optional identifier for the original data collection. This helps ensure that boolean operations are performed between result sets derived from the same logical collection. It can be a file path, directory path, or a user-defined ID.</li>
 </ul>
 </li>
-<li><code>filenames_in_collection</code>: <code>Array&lt;String&gt;</code> (optional)<ul>
-<li>A sorted list of unique, absolute file paths that contributed data to form the collection. This is primarily populated when the input to <code>jaf filter</code> is a directory. It's used by <code>jaf resolve</code> (and <code>JafResultSet.get_matching_objects()</code>) to locate the original data.</li>
+<li><code>collection_source</code>: (Optional) A dictionary containing metadata about the original data source, enabling data resolution.<ul>
+<li><code>{"type": "jsonl", "path": "/path/to/file.jsonl"}</code></li>
+<li><code>{"type": "json_array", "path": "/path/to/file.json"}</code></li>
+<li><code>{"type": "directory", "path": "/path/to/dir", "files": ["/path/to/dir/a.json", ...]}</code></li>
+<li><code>{"type": "buffered_stdin", "format": "jsonl", "content": [...]}</code>: Used when <code>stdin</code> is piped to <code>jaf filter</code>. The content is buffered to allow for subsequent resolution in a pipe chain.</li>
 </ul>
 </li>
+<li><code>query</code>: (Optional) The JAF query AST that produced this result set.</li>
 </ul>
 <p><strong>Example JSON Output (compact):</strong>
-<div class="language-json highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span><span class="nt">&quot;indices&quot;</span><span class="p">:[</span><span class="mi">0</span><span class="p">,</span><span class="mi">2</span><span class="p">],</span><span class="nt">&quot;collection_size&quot;</span><span class="p">:</span><span class="mi">3</span><span class="p">,</span><span class="nt">&quot;collection_id&quot;</span><span class="p">:</span><span class="s2">&quot;/path/to/data.json&quot;</span><span class="p">,</span><span class="nt">&quot;filenames_in_collection&quot;</span><span class="p">:[</span><span class="s2">&quot;/path/to/data.json&quot;</span><span class="p">]}</span>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span><span class="nt">&quot;indices&quot;</span><span class="p">:[</span><span class="mi">0</span><span class="p">,</span><span class="mi">2</span><span class="p">],</span><span class="nt">&quot;collection_size&quot;</span><span class="p">:</span><span class="mi">3</span><span class="p">,</span><span class="nt">&quot;collection_id&quot;</span><span class="p">:</span><span class="s2">&quot;/path/to/data_dir&quot;</span><span class="p">,</span><span class="nt">&quot;collection_source&quot;</span><span class="p">:{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="s2">&quot;directory&quot;</span><span class="p">,</span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="s2">&quot;/path/to/data_dir&quot;</span><span class="p">,</span><span class="nt">&quot;files&quot;</span><span class="p">:[</span><span class="s2">&quot;/path/to/data_dir/a.json&quot;</span><span class="p">]}}</span>
 </span></code></pre></div>
-If <code>filenames_in_collection</code> is not present or <code>null</code>, it's omitted from the JSON.</p>
+If <code>collection_source</code> is not present or <code>null</code>, it's omitted from the JSON.</p>
 <h2 id="query-format">Query Format<a class="headerlink" href="#query-format" title="Permanent link">&para;</a></h2>
 <p>Queries use S-expression syntax: <code>[operator, arg1, arg2, ...]</code></p>
 <p><strong>Examples</strong>:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">]]],</span> <span class="s2">&quot;John&quot;</span><span class="p">]</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="p">[</span><span class="s2">&quot;and&quot;</span><span class="p">,</span> 
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>  <span class="p">[</span><span class="s2">&quot;exists?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;email&quot;</span><span class="p">]]]],</span> 
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>  <span class="p">[</span><span class="s2">&quot;gt?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;length&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;items&quot;</span><span class="p">]]]],</span> <span class="mi">5</span><span class="p">]</span>
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="p">]</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Traditional path syntax</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">]]],</span> <span class="s2">&quot;John&quot;</span><span class="p">]</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="p">[</span><span class="s2">&quot;and&quot;</span><span class="p">,</span> 
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>  <span class="p">[</span><span class="s2">&quot;exists?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;email&quot;</span><span class="p">]]]],</span> 
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>  <span class="p">[</span><span class="s2">&quot;gt?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;length&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;items&quot;</span><span class="p">]]]],</span> <span class="mi">5</span><span class="p">]</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="p">]</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="c1"># With @ special path notation (concise)</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="s2">&quot;@name&quot;</span><span class="p">,</span> <span class="s2">&quot;John&quot;</span><span class="p">]</span>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="p">[</span><span class="s2">&quot;and&quot;</span><span class="p">,</span> 
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>  <span class="p">[</span><span class="s2">&quot;exists?&quot;</span><span class="p">,</span> <span class="s2">&quot;@email&quot;</span><span class="p">],</span> 
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>  <span class="p">[</span><span class="s2">&quot;gt?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;length&quot;</span><span class="p">,</span> <span class="s2">&quot;@items&quot;</span><span class="p">],</span> <span class="mi">5</span><span class="p">]</span>
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="p">]</span>
 </span></code></pre></div>
+<h2 id="-special-path-notation">@ Special Path Notation<a class="headerlink" href="#-special-path-notation" title="Permanent link">&para;</a></h2>
+<p>JAF provides a concise <code>@</code> syntax as an alternative to the explicit <code>["path", ...]</code> form. This notation significantly reduces verbosity while maintaining full compatibility with the path system.</p>
+<p><strong>Syntax Forms:</strong></p>
+<ol>
+<li><strong>String Format</strong>: <code>"@path.expression"</code></li>
+<li>Most concise form for simple path access</li>
+<li>
+<p>Example: <code>"@user.name"</code>, <code>"@items.*.status"</code>, <code>"@data[0].value"</code></p>
+</li>
+<li>
+<p><strong>Explicit AST with String</strong>: <code>["@", "path.expression"]</code></p>
+</li>
+<li>Explicit operator form using string path</li>
+<li>
+<p>Example: <code>["@", "user.name"]</code></p>
+</li>
+<li>
+<p><strong>Explicit AST with Path Components</strong>: <code>["@", path_components_list]</code></p>
+</li>
+<li>Explicit operator form using tagged path components</li>
+<li>Example: <code>["@", [["key", "user"], ["key", "name"]]]</code></li>
+</ol>
+<p><strong>Equivalence:</strong></p>
+<p>All three forms are functionally equivalent to the traditional <code>["path", ...]</code> syntax:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># These are all equivalent:</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="s2">&quot;@user.name&quot;</span>                                    <span class="c1"># Concise string format</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="p">[</span><span class="s2">&quot;@&quot;</span><span class="p">,</span> <span class="s2">&quot;user.name&quot;</span><span class="p">]</span>                              <span class="c1"># Explicit with string</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="p">[</span><span class="s2">&quot;@&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;user&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">]]]</span>       <span class="c1"># Explicit with AST</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="s2">&quot;user.name&quot;</span><span class="p">]</span>                           <span class="c1"># Traditional with string</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;user&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">]]]</span>    <span class="c1"># Traditional with AST</span>
+</span></code></pre></div>
+<p><strong>Usage in Queries:</strong></p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Simple equality with @ syntax</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="s2">&quot;@status&quot;</span><span class="p">,</span> <span class="s2">&quot;active&quot;</span><span class="p">]</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># Complex conditions</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="p">[</span><span class="s2">&quot;and&quot;</span><span class="p">,</span> 
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>  <span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="s2">&quot;@user.status&quot;</span><span class="p">,</span> <span class="s2">&quot;active&quot;</span><span class="p">],</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>  <span class="p">[</span><span class="s2">&quot;in?&quot;</span><span class="p">,</span> <span class="s2">&quot;dev&quot;</span><span class="p">,</span> <span class="s2">&quot;@user.tags&quot;</span><span class="p">],</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>  <span class="p">[</span><span class="s2">&quot;gt?&quot;</span><span class="p">,</span> <span class="s2">&quot;@user.score&quot;</span><span class="p">,</span> <span class="mi">100</span><span class="p">]]</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="c1"># Existence checks</span>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="p">[</span><span class="s2">&quot;exists?&quot;</span><span class="p">,</span> <span class="s2">&quot;@user.profile.settings&quot;</span><span class="p">]</span>
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="c1"># With wildcards and advanced path features</span>
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="s2">&quot;@projects.*.status&quot;</span><span class="p">,</span> <span class="s2">&quot;completed&quot;</span><span class="p">]</span>
+</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="p">[</span><span class="s2">&quot;gt?&quot;</span><span class="p">,</span> <span class="s2">&quot;@items[0].price&quot;</span><span class="p">,</span> <span class="mi">50</span><span class="p">]</span>
+</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="p">[</span><span class="s2">&quot;exists?&quot;</span><span class="p">,</span> <span class="s2">&quot;@logs.*.error&quot;</span><span class="p">]</span>
+</span></code></pre></div>
+<p><strong>Benefits:</strong></p>
+<ul>
+<li><strong>Conciseness</strong>: <code>"@user.name"</code> vs <code>["path", "user.name"]</code></li>
+<li><strong>Readability</strong>: Reduces visual clutter in complex queries</li>
+<li><strong>Familiarity</strong>: <code>@</code> is commonly used for references in many languages</li>
+<li><strong>Full Compatibility</strong>: Works with all path features (wildcards, indexing, etc.)</li>
+<li><strong>Coexistence</strong>: Traditional <code>["path", ...]</code> syntax remains fully supported</li>
+</ul>
 <h2 id="path-system">Path System<a class="headerlink" href="#path-system" title="Permanent link">&para;</a></h2>
-<p>The JAF Path System is a small, dedicated sub-language for data traversal within JSON objects. Paths are <strong>lists of tagged components</strong> used within the <code>["path", path_components_list]</code> special form. This tagged structure (its own AST) provides a uniform and explicit way to define how to traverse the JSON data.</p>
+<p>The JAF Path System is a small, dedicated sub-language for data traversal within JSON objects. Paths are <strong>lists of tagged components</strong> used within the <code>["path", path_components_list]</code> special form or the <code>@</code> notation. This tagged structure (its own AST) provides a uniform and explicit way to define how to traverse the JSON data.</p>
 <p>Each component in the <code>path_components_list</code> is a list itself, where the first element is a tag (string) indicating the type of path segment, and subsequent elements are arguments for that segment type.</p>
 <p><strong>Supported Path Component Tags:</strong></p>
 <ol>
@@ -817,6 +912,25 @@ If <code>filenames_in_collection</code> is not present or <code>null</code>, it'
 </ul>
 </li>
 <li>
+<p><code>["fuzzy_key", &lt;target_key_string&gt; [, &lt;cutoff_float&gt; [, &lt;algorithm_string&gt;]]]</code></p>
+<ul>
+<li>Accesses object properties where keys are similar to the target key using fuzzy string matching.</li>
+<li><strong>Arguments</strong>:<ul>
+<li><code>target_key_string</code>: The key name to search for (required string).</li>
+<li><code>cutoff_float</code>: Minimum similarity score between 0.0 and 1.0 (optional, default: 0.6).</li>
+<li><code>algorithm_string</code>: Matching algorithm (optional, default: "difflib"). Supported: "difflib", "levenshtein", "jaro_winkler", "soundex", "metaphone".</li>
+</ul>
+</li>
+<li><strong>Behavior</strong>: Returns a list of values from keys that meet the similarity threshold, sorted by similarity (best matches first). Exact matches are prioritized.</li>
+<li><strong>Library Dependencies</strong>: Some algorithms require optional libraries (Levenshtein, jellyfish). Falls back to difflib if libraries are unavailable.</li>
+<li><strong>Examples</strong>: <ul>
+<li><code>[["fuzzy_key", "username"]]</code> might match "user_name", "userName", "usr_nm"</li>
+<li><code>[["fuzzy_key", "apikey", 0.8, "levenshtein"]]</code> uses Levenshtein distance with high precision</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
 <p><code>["wc_level"]</code> (Wildcard - Current Level)</p>
 <ul>
 <li>Matches any single field name or array index at the current level of the object or array.</li>
@@ -832,7 +946,9 @@ If <code>filenames_in_collection</code> is not present or <code>null</code>, it'
 <li>Example: <code>[["wc_recursive"], ["key", "error_code"]]</code> finds any "error_code" field anywhere in the object.</li>
 </ul>
 </li>
-<li><code>["root"]</code><ul>
+<li>
+<p><code>["root"]</code></p>
+<ul>
 <li>Represents the root of the object against which the entire path expression is being evaluated.</li>
 <li>Allows paths to "restart" or reference from the top-level object, even if the current evaluation context is nested due to prior path components.</li>
 <li>Example: <code>[["key", "user"], ["root"], ["key", "config"]]</code> - if <code>obj</code> is <code>{"user": {"name": "A"}, "config": {"setting": "X"}}</code>, this path would first go to <code>obj["user"]</code>, then <code>["root"]</code> would reset the context to <code>obj</code>, and <code>["key", "config"]</code> would access <code>obj["config"]</code>.</li>
@@ -840,85 +956,118 @@ If <code>filenames_in_collection</code> is not present or <code>null</code>, it'
 </li>
 </ol>
 <p><strong>Path Evaluation (<code>eval_path</code> function):</strong></p>
-<p>The <code>eval_path(obj, path_components_list)</code> function (internally used by the <code>["path", ...]</code> special form) evaluates the given path against the <code>obj</code>.</p>
+<p>The <code>eval_path(obj, path_components_list)</code> function (internally used by both the <code>["path", ...]</code> special form and <code>@</code> notation) evaluates the given path against the <code>obj</code>.</p>
 <ul>
 <li><strong>Return Value</strong>:<ul>
 <li>If the path does not contain multi-match components (i.e., only uses <code>["key", ...]</code> or <code>["index", ...]</code>) and successfully resolves to a single, definite value, that value is returned directly. This includes <code>None</code> if the field exists and its value is <code>null</code>.</li>
 <li>If the path involves components that can naturally yield multiple values (e.g., <code>["indices", ...]</code>, <code>["slice", ...]</code>, <code>["regex_key", ...]</code>, <code>["wc_level"]</code>, <code>["wc_recursive"]</code>), <code>eval_path</code> returns a <code>PathValues</code> object. <code>PathValues</code> is a specialized list subclass that holds the collection of all values found by the path. It preserves the order of discovery and can contain duplicates if the data and path logic lead to them. It offers convenience methods for accessing its contents (e.g., <code>first()</code>, <code>one()</code>).</li>
 <li>If a path that does <em>not</em> contain multi-match components fails to resolve at any point (e.g., a key not found, an index out of bounds for a specific index access), <code>eval_path</code> returns an empty list <code>[]</code>. This signifies "not found" or "no value" for a specific path.</li>
 <li>If a path <em>with</em> multi-match components finds no values, it returns an empty <code>PathValues</code> object (e.g., <code>PathValues([])</code>). This is distinct from the <code>[]</code> returned for a specific path not found.</li>
-<li>If the <code>path_components_list</code> is empty (e.g., <code>["path", []]</code>), <code>eval_path</code> returns the original <code>obj</code>.</li>
+<li>If the <code>path_components_list</code> is empty (e.g., <code>["path", []]</code> or <code>["@", ""]</code>), <code>eval_path</code> returns the original <code>obj</code>.</li>
 <li>In rare cases where a path <em>without</em> multi-match components unexpectedly yields multiple distinct results, <code>eval_path</code> may also wrap these results in a <code>PathValues</code> object with a warning.</li>
 </ul>
 </li>
 </ul>
 <p><strong>Examples of Path Syntax:</strong></p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Access a top-level key:</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">]]]</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># Access a nested key:</span>
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;user&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;email&quot;</span><span class="p">]]]</span>
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># Access all &quot;status&quot; fields from items in a list:</span>
-</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;items&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;wc_level&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;status&quot;</span><span class="p">]]]</span>
-</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>
-</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="c1"># Access an element by index:</span>
-</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;data&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;index&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;value&quot;</span><span class="p">]]]</span>
-</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>
-</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="c1"># Access elements via slice:</span>
-</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;measurements&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;slice&quot;</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="n">null</span><span class="p">]]]</span>
-</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>
-</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="c1"># Access elements via specific indices:</span>
-</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;users&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;indices&quot;</span><span class="p">,</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">5</span><span class="p">]]]]</span>
-</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>
-</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="c1"># Access elements via regex on keys:</span>
-</span><span id="__span-2-20"><a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;logs&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;regex_key&quot;</span><span class="p">,</span> <span class="s2">&quot;session_</span><span class="se">\\</span><span class="s2">w+&quot;</span><span class="p">]]]</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Traditional syntax:</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">]]]</span>                    <span class="c1"># Access a top-level key</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;user&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;email&quot;</span><span class="p">]]]</span>  <span class="c1"># Access a nested key</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;items&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;wc_level&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;status&quot;</span><span class="p">]]]</span>  <span class="c1"># Wildcard access</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="c1"># With @ syntax (equivalent):</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="s2">&quot;@name&quot;</span>                     <span class="c1"># Access a top-level key</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="s2">&quot;@user.email&quot;</span>               <span class="c1"># Access a nested key  </span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="s2">&quot;@items.*.status&quot;</span>           <span class="c1"># Wildcard access</span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="c1"># Array operations:</span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;data&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;index&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;value&quot;</span><span class="p">]]]</span>    <span class="c1"># Traditional</span>
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="s2">&quot;@data[0].value&quot;</span>                                               <span class="c1"># @ syntax</span>
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>
+</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="c1"># Complex path operations:</span>
+</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;measurements&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;slice&quot;</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="n">null</span><span class="p">]]]</span>   <span class="c1"># Traditional</span>
+</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="s2">&quot;@measurements[10:20]&quot;</span>                                         <span class="c1"># @ syntax</span>
+</span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>
+</span><span id="__span-4-19"><a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="c1"># Multiple indices:</span>
+</span><span id="__span-4-20"><a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;users&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;indices&quot;</span><span class="p">,</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">5</span><span class="p">]]]]</span>          <span class="c1"># Traditional</span>
+</span><span id="__span-4-21"><a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="s2">&quot;@users[1,3,5]&quot;</span>                                                <span class="c1"># @ syntax</span>
+</span><span id="__span-4-22"><a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a>
+</span><span id="__span-4-23"><a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a><span class="c1"># Regex matching:</span>
+</span><span id="__span-4-24"><a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;logs&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;regex_key&quot;</span><span class="p">,</span> <span class="s2">&quot;session_</span><span class="se">\\</span><span class="s2">w+&quot;</span><span class="p">]]]</span>     <span class="c1"># Traditional</span>
+</span><span id="__span-4-25"><a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a><span class="c1"># (@ syntax uses the same string path format for regex patterns)</span>
 </span></code></pre></div>
-<p><strong>Behavior of the <code>["path", ...]</code> special form:</strong></p>
+<p><strong>Behavior of Path Special Forms:</strong></p>
 <ul>
-<li>When the <code>["path", ...]</code> form is evaluated, it internally calls <code>eval_path</code> with the current object and the provided <code>path_components_list</code>.</li>
-<li>The result of <code>eval_path</code> (a single value, <code>None</code>, <code>[]</code>, or a <code>PathValues</code> list) is then used as the value of the <code>["path", ...]</code> expression in the broader JAF query.</li>
+<li>When <code>["path", ...]</code> or <code>@</code> forms are evaluated, they internally call <code>eval_path</code> with the current object and the provided path specification.</li>
+<li>The result of <code>eval_path</code> (a single value, <code>None</code>, <code>[]</code>, or a <code>PathValues</code> list) is then used as the value of the path expression in the broader JAF query.</li>
 </ul>
 <h2 id="operator-categories">Operator Categories<a class="headerlink" href="#operator-categories" title="Permanent link">&para;</a></h2>
 <h3 id="1-special-forms-custom-evaluation">1. Special Forms (Custom Evaluation)<a class="headerlink" href="#1-special-forms-custom-evaluation" title="Permanent link">&para;</a></h3>
 <ul>
 <li><code>path</code> - Extract values: <code>["path", [["key", "field"], ["key", "subfield"]]]</code></li>
-<li><code>exists?</code> - Check existence: <code>["exists?", ["path", [["key", "field"]]]]</code></li>
-<li><code>exists?</code> returns <code>true</code> if <code>eval_path</code> for the given path components returns anything other than an empty list <code>[]</code> (when the path is specific and not found) or an empty <code>PathValues</code> (when the path is multi-match and not found). A path to a <code>null</code> value <em>does</em> exist and <code>exists?</code> will return <code>true</code>.</li>
+<li><code>@</code> - Concise path notation: <code>"@field.subfield"</code> or <code>["@", path_expr]</code></li>
+<li><code>exists?</code> - Check existence: <code>["exists?", path_expr]</code></li>
+<li><code>self</code> - Reference the current root object: <code>["self"]</code></li>
 <li><code>if</code> - Conditional: <code>["if", condition, true-expr, false-expr]</code></li>
 <li><code>and</code> - Logical AND with short-circuit: <code>["and", expr1, expr2, ...]</code></li>
 <li><code>or</code> - Logical OR with short-circuit: <code>["or", expr1, expr2, ...]</code></li>
 <li><code>not</code> - Logical negation: <code>["not", expr]</code></li>
 </ul>
 <h3 id="2-predicates-return-boolean">2. Predicates (Return Boolean)<a class="headerlink" href="#2-predicates-return-boolean" title="Permanent link">&para;</a></h3>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Comparison</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="s2">&quot;neq?&quot;</span><span class="p">,</span> <span class="s2">&quot;gt?&quot;</span><span class="p">,</span> <span class="s2">&quot;gte?&quot;</span><span class="p">,</span> <span class="s2">&quot;lt?&quot;</span><span class="p">,</span> <span class="s2">&quot;lte?&quot;</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># Containment  </span>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="s2">&quot;in?&quot;</span>
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="c1"># String matching</span>
-</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="s2">&quot;starts-with?&quot;</span><span class="p">,</span> <span class="s2">&quot;ends-with?&quot;</span><span class="p">,</span> <span class="s2">&quot;regex-match?&quot;</span><span class="p">,</span> <span class="s2">&quot;close-match?&quot;</span><span class="p">,</span> <span class="s2">&quot;partial-match?&quot;</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Comparison</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="s2">&quot;neq?&quot;</span><span class="p">,</span> <span class="s2">&quot;gt?&quot;</span><span class="p">,</span> <span class="s2">&quot;gte?&quot;</span><span class="p">,</span> <span class="s2">&quot;lt?&quot;</span><span class="p">,</span> <span class="s2">&quot;lte?&quot;</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># Containment / Membership</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="s2">&quot;in?&quot;</span><span class="p">,</span> <span class="s2">&quot;contains?&quot;</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="c1"># String matching</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="s2">&quot;starts-with?&quot;</span><span class="p">,</span> <span class="s2">&quot;ends-with?&quot;</span><span class="p">,</span> <span class="s2">&quot;regex-match?&quot;</span><span class="p">,</span> <span class="s2">&quot;close-match?&quot;</span><span class="p">,</span> <span class="s2">&quot;partial-match?&quot;</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="c1"># Type checking</span>
+</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="s2">&quot;is-string?&quot;</span><span class="p">,</span> <span class="s2">&quot;is-number?&quot;</span><span class="p">,</span> <span class="s2">&quot;is-list?&quot;</span><span class="p">,</span> <span class="s2">&quot;is-dict?&quot;</span><span class="p">,</span> <span class="s2">&quot;is-null?&quot;</span><span class="p">,</span> <span class="s2">&quot;is-empty?&quot;</span>
 </span></code></pre></div>
 <h3 id="3-value-extractors-support-predicates">3. Value Extractors (Support Predicates)<a class="headerlink" href="#3-value-extractors-support-predicates" title="Permanent link">&para;</a></h3>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Data access</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="s2">&quot;length&quot;</span><span class="p">,</span> <span class="s2">&quot;type&quot;</span><span class="p">,</span> <span class="s2">&quot;keys&quot;</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># String transformation  </span>
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="s2">&quot;lower-case&quot;</span><span class="p">,</span> <span class="s2">&quot;upper-case&quot;</span>
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="c1"># Date/time</span>
-</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="s2">&quot;now&quot;</span><span class="p">,</span> <span class="s2">&quot;date&quot;</span><span class="p">,</span> <span class="s2">&quot;datetime&quot;</span><span class="p">,</span> <span class="s2">&quot;date-diff&quot;</span><span class="p">,</span> <span class="s2">&quot;days&quot;</span><span class="p">,</span> <span class="s2">&quot;seconds&quot;</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># Data access</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="s2">&quot;length&quot;</span><span class="p">,</span> <span class="s2">&quot;type&quot;</span><span class="p">,</span> <span class="s2">&quot;keys&quot;</span><span class="p">,</span> <span class="s2">&quot;first&quot;</span><span class="p">,</span> <span class="s2">&quot;last&quot;</span><span class="p">,</span> <span class="s2">&quot;unique&quot;</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="c1"># String transformation</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="s2">&quot;lower-case&quot;</span><span class="p">,</span> <span class="s2">&quot;upper-case&quot;</span><span class="p">,</span> <span class="s2">&quot;split&quot;</span><span class="p">,</span> <span class="s2">&quot;join&quot;</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="c1"># Arithmetic (variadic)</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="s2">&quot;+&quot;</span><span class="p">,</span> <span class="s2">&quot;-&quot;</span><span class="p">,</span> <span class="s2">&quot;*&quot;</span><span class="p">,</span> <span class="s2">&quot;/&quot;</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="c1"># Arithmetic (binary)</span>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="s2">&quot;%&quot;</span>
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>
+</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="c1"># Date/time</span>
+</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="s2">&quot;now&quot;</span><span class="p">,</span> <span class="s2">&quot;date&quot;</span><span class="p">,</span> <span class="s2">&quot;datetime&quot;</span><span class="p">,</span> <span class="s2">&quot;date-diff&quot;</span><span class="p">,</span> <span class="s2">&quot;days&quot;</span><span class="p">,</span> <span class="s2">&quot;seconds&quot;</span>
 </span></code></pre></div>
 <h2 id="function-signatures">Function Signatures<a class="headerlink" href="#function-signatures" title="Permanent link">&para;</a></h2>
 <p>All functions follow this pattern:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="p">[</span><span class="n">function</span><span class="o">-</span><span class="n">name</span><span class="p">,</span> <span class="n">arg1</span><span class="p">,</span> <span class="n">arg2</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="p">[</span><span class="n">function</span><span class="o">-</span><span class="n">name</span><span class="p">,</span> <span class="n">arg1</span><span class="p">,</span> <span class="n">arg2</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
 </span></code></pre></div>
 <p><strong>Examples</strong>:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">]]],</span> <span class="s2">&quot;John&quot;</span><span class="p">]</span>                    <span class="c1"># name == &quot;John&quot;</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="p">[</span><span class="s2">&quot;gt?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;length&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;items&quot;</span><span class="p">]]]],</span> <span class="mi">5</span><span class="p">]</span>            <span class="c1"># len(items) &gt; 5  </span>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="p">[</span><span class="s2">&quot;starts-with?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;lower-case&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;email&quot;</span><span class="p">]]]],</span> <span class="s2">&quot;admin&quot;</span><span class="p">]</span>  <span class="c1"># email.lower().startswith(&quot;admin&quot;)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Traditional syntax:</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">]]],</span> <span class="s2">&quot;John&quot;</span><span class="p">]</span>                    <span class="c1"># name == &quot;John&quot;</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="p">[</span><span class="s2">&quot;gt?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;length&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;items&quot;</span><span class="p">]]]],</span> <span class="mi">5</span><span class="p">]</span>            <span class="c1"># len(items) &gt; 5  </span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="p">[</span><span class="s2">&quot;starts-with?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;lower-case&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;email&quot;</span><span class="p">]]]],</span> <span class="s2">&quot;admin&quot;</span><span class="p">]</span>  <span class="c1"># email.lower().startswith(&quot;admin&quot;)</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="c1"># With @ syntax (more concise):</span>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="s2">&quot;@name&quot;</span><span class="p">,</span> <span class="s2">&quot;John&quot;</span><span class="p">]</span>                                        <span class="c1"># name == &quot;John&quot;</span>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="p">[</span><span class="s2">&quot;gt?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;length&quot;</span><span class="p">,</span> <span class="s2">&quot;@items&quot;</span><span class="p">],</span> <span class="mi">5</span><span class="p">]</span>                                <span class="c1"># len(items) &gt; 5</span>
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="p">[</span><span class="s2">&quot;starts-with?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;lower-case&quot;</span><span class="p">,</span> <span class="s2">&quot;@email&quot;</span><span class="p">],</span> <span class="s2">&quot;admin&quot;</span><span class="p">]</span>             <span class="c1"># email.lower().startswith(&quot;admin&quot;)</span>
 </span></code></pre></div>
+<p><strong>New Function Signatures:</strong>
+- <code>["self"]</code>: Returns the entire root object being evaluated.
+- <code>["contains?", container, item]</code>: Returns true if <code>container</code> (a list or string) contains <code>item</code>.
+- <code>["is-string?", value]</code>, <code>["is-number?", value]</code>, etc.: Type-checking predicates.
+- <code>["is-empty?", value]</code>: Returns true if a list, string, or dict is empty, or if the value is <code>None</code>.
+- <code>["first", list]</code>, <code>["last", list]</code>: Return the first or last element of a list.
+- <code>["unique", list]</code>: Returns a new list with duplicates removed while preserving order.
+- <code>["split", string, delimiter]</code>, <code>["join", list, delimiter]</code>: String manipulation.
+- <code>["+", num1, num2, ...]</code>: Variadic addition. <code>(+)</code> is 0, <code>(+ a)</code> is <code>a</code>.
+- <code>["*", num1, num2, ...]</code>: Variadic multiplication. <code>(*)</code> is 1, <code>(* a)</code> is <code>a</code>.
+- <code>["-", num1, num2, ...]</code>: Variadic subtraction. <code>(-)</code> is 0, <code>(- a)</code> is <code>-a</code>, <code>(- a b)</code> is <code>a-b</code>.
+- <code>["/", num1, num2, ...]</code>: Variadic division. <code>(/)</code> is an error, <code>(/ a)</code> is <code>1/a</code>, <code>(/ a b)</code> is <code>a/b</code>.</p>
 <h2 id="evaluation-rules">Evaluation Rules<a class="headerlink" href="#evaluation-rules" title="Permanent link">&para;</a></h2>
 <h3 id="1-literals">1. Literals<a class="headerlink" href="#1-literals" title="Permanent link">&para;</a></h3>
 <ul>
@@ -931,6 +1080,7 @@ If <code>filenames_in_collection</code> is not present or <code>null</code>, it'
 <ul>
 <li>Evaluated with custom logic (don't evaluate all args first).</li>
 <li>Handle control flow and path access.</li>
+<li>Both <code>path</code> and <code>@</code> are special forms that handle path evaluation.</li>
 </ul>
 <h3 id="3-regular-functions-predicates-and-value-extractors">3. Regular Functions (Predicates and Value Extractors)<a class="headerlink" href="#3-regular-functions-predicates-and-value-extractors" title="Permanent link">&para;</a></h3>
 <ul>
@@ -938,7 +1088,7 @@ If <code>filenames_in_collection</code> is not present or <code>null</code>, it'
 <li>Predictable evaluation order.</li>
 </ul>
 <h3 id="4-pathvalues-in-predicates-and-functions-interaction-with-adapt_jaf_operator">4. <code>PathValues</code> in Predicates and Functions (Interaction with <code>adapt_jaf_operator</code>)<a class="headerlink" href="#4-pathvalues-in-predicates-and-functions-interaction-with-adapt_jaf_operator" title="Permanent link">&para;</a></h3>
-<p>When a <code>PathValues</code> object (the result of a <code>["path", ...]</code> expression involving components like <code>wc_level</code>, <code>wc_recursive</code>, <code>indices</code>, <code>slice</code>, or <code>regex_key</code>) is used as an argument to a predicate or a value-transforming function, JAF (via the <code>adapt_jaf_operator</code> utility) employs a specific evaluation strategy. <code>PathValues</code> represents the collection of all values found by such a path.</p>
+<p>When a <code>PathValues</code> object (the result of a path expression involving components like <code>wc_level</code>, <code>wc_recursive</code>, <code>indices</code>, <code>slice</code>, or <code>regex_key</code>) is used as an argument to a predicate or a value-transforming function, JAF (via the <code>adapt_jaf_operator</code> utility) employs a specific evaluation strategy. <code>PathValues</code> represents the collection of all values found by such a path.</p>
 <p><strong>a. Argument Expansion (Cartesian Product):</strong></p>
 <ul>
 <li>If one or more arguments to a function are <code>PathValues</code> lists, the system generates all possible combinations of individual values from these lists. This is equivalent to a Cartesian product.</li>
@@ -950,8 +1100,8 @@ If <code>filenames_in_collection</code> is not present or <code>null</code>, it'
 <li>If the function being called is a <strong>predicate</strong> (typically its name ends with <code>?</code>):</li>
 <li>The predicate evaluates to <code>true</code> if <strong>there exists at least one combination</strong> of expanded arguments for which the predicate's condition holds.</li>
 <li>If all combinations evaluate to <code>false</code>, or if any <code>PathValues</code> argument was initially empty (resulting in no combinations to test), the overall predicate evaluates to <code>false</code>.</li>
-<li><strong>Example</strong>: <code>["eq?", ["path", [["key", "items"], ["wc_level"], ["key", "status"]]], "completed"]</code>.
-    Let <code>S = eval_path(obj, [["key", "items"], ["wc_level"], ["key", "status"]]])</code>. The predicate is true if ∃ <em>s</em> ∈ <code>S</code> such that <code>eq?(s, "completed")</code> is true.</li>
+<li><strong>Example</strong>: <code>["eq?", ["path", [["key", "items"], ["wc_level"], ["key", "status"]]], "completed"]</code> or <code>["eq?", "@items.*.status", "completed"]</code>.
+    Let <code>S = eval_path(obj, path_expr_for_items_status)</code>. The predicate is true if ∃ <em>s</em> ∈ <code>S</code> such that <code>eq?(s, "completed")</code> is true.</li>
 <li>Type errors or attribute errors encountered during the evaluation of a specific combination for a predicate cause that particular combination to yield <code>false</code>. The overall predicate can still be <code>true</code> if another combination succeeds.</li>
 </ul>
 <p><strong>c. Value Extractor/Transformer Evaluation:</strong></p>
@@ -969,7 +1119,7 @@ If <code>filenames_in_collection</code> is not present or <code>null</code>, it'
 </ul>
 <p><strong>d. Universal Quantification (<code>∀</code>) and <code>path</code>:</strong></p>
 <ul>
-<li>The <code>path</code> operator itself is designed for <em>data extraction</em> – it gathers all values that match a given path. It does not inherently perform universal quantification ("for all").</li>
+<li>The <code>path</code> operator (and <code>@</code> notation) itself is designed for <em>data extraction</em> – it gathers all values that match a given path. It does not inherently perform universal quantification ("for all").</li>
 <li>Universal quantification is a <em>checking</em> operation. While not directly supported by <code>path</code>, such checks can often be constructed using negation and existential quantification (e.g., "it is NOT true that there EXISTS an item that does NOT satisfy the condition"). For example, to check if all items in a list have <code>status == "active"</code>: <code>["not", ["in?", false, ["map", ["lambda", "x", ["eq?", ["path", [["key", "x"], ["key", "status"]]], "active"]], ["path", [["key", "items"]]]]]]</code> (assuming a hypothetical <code>map</code> and <code>lambda</code> for illustration; JAF does not have these directly but similar logic can be built with <code>and</code>/<code>or</code> over known items or by checking for the non-existence of a counter-example). A simpler approach for "all items satisfy X" is often "NOT (EXISTS item that does NOT satisfy X)".</li>
 </ul>
 <h2 id="boolean-algebra-on-result-sets">Boolean Algebra on Result Sets<a class="headerlink" href="#boolean-algebra-on-result-sets" title="Permanent link">&para;</a></h2>
@@ -1047,7 +1197,13 @@ Before performing binary operations (AND, OR, XOR, SUBTRACT), <code>JafResultSet
 <li>Non-existent specific paths (key not found, index out of bounds for specific index access) result in <code>eval_path</code> returning <code>[]</code> (empty list).</li>
 <li>A multi-match path that finds no values results in <code>eval_path</code> returning an empty <code>PathValues</code> object.</li>
 <li>A path to a field that exists but has a <code>null</code> value will result in <code>eval_path</code> returning <code>None</code> (if it's a specific path resolving to that <code>null</code>).</li>
-<li>Use <code>exists?</code> to check path existence. <code>exists?</code> returns <code>true</code> if <code>eval_path</code> for the given path components returns anything other than an empty list <code>[]</code> (when the path is specific and not found) or an empty <code>PathValues</code> (when the path is multi-match and not found). A path to a <code>null</code> value <em>does</em> exist and <code>exists?</code> will return <code>true</code>.</li>
+<li>Use <code>exists?</code> to check path existence. <code>exists?</code> returns <code>true</code> if <code>eval_path</code> for the given path expression returns anything other than an empty list <code>[]</code> (when the path is specific and not found) or an empty <code>PathValues</code> (when the path is multi-match and not found). A path to a <code>null</code> value <em>does</em> exist and <code>exists?</code> will return <code>true</code>.</li>
+</ul>
+<h3 id="-notation-errors">@ Notation Errors<a class="headerlink" href="#-notation-errors" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Empty <code>@</code> expressions (e.g., <code>"@"</code>) raise <code>PathSyntaxError</code>.</li>
+<li>Invalid path syntax in <code>@</code> expressions (e.g., <code>"@[invalid"</code>) raise <code>PathSyntaxError</code> with details about the syntax error.</li>
+<li>Wrong argument count for the <code>@</code> operator (when used as <code>["@", ...]</code>) raises <code>ValueError</code>.</li>
 </ul>
 <h3 id="type-errors">Type Errors<a class="headerlink" href="#type-errors" title="Permanent link">&para;</a></h3>
 <ul>
@@ -1062,39 +1218,79 @@ Before performing binary operations (AND, OR, XOR, SUBTRACT), <code>JafResultSet
 </ul>
 <h2 id="example-queries">Example Queries<a class="headerlink" href="#example-queries" title="Permanent link">&para;</a></h2>
 <h3 id="basic-filtering">Basic Filtering<a class="headerlink" href="#basic-filtering" title="Permanent link">&para;</a></h3>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Find objects where name is &quot;John&quot;</span>
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">]]],</span> <span class="s2">&quot;John&quot;</span><span class="p">]</span>
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># Find objects with more than 5 items</span>
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="p">[</span><span class="s2">&quot;gt?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;length&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;items&quot;</span><span class="p">]]]],</span> <span class="mi">5</span><span class="p">]</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Traditional syntax:</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">]]],</span> <span class="s2">&quot;John&quot;</span><span class="p">]</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="p">[</span><span class="s2">&quot;gt?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;length&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;items&quot;</span><span class="p">]]]],</span> <span class="mi">5</span><span class="p">]</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="c1"># With @ syntax (more concise):</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="s2">&quot;@name&quot;</span><span class="p">,</span> <span class="s2">&quot;John&quot;</span><span class="p">]</span>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="p">[</span><span class="s2">&quot;gt?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;length&quot;</span><span class="p">,</span> <span class="s2">&quot;@items&quot;</span><span class="p">],</span> <span class="mi">5</span><span class="p">]</span>
 </span></code></pre></div>
 <h3 id="complex-conditions">Complex Conditions<a class="headerlink" href="#complex-conditions" title="Permanent link">&para;</a></h3>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Active users with email addresses</span>
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="p">[</span><span class="s2">&quot;and&quot;</span><span class="p">,</span> 
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>  <span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;active&quot;</span><span class="p">]]],</span> <span class="n">true</span><span class="p">],</span>
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>  <span class="p">[</span><span class="s2">&quot;exists?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;email&quot;</span><span class="p">]]]]</span>
-</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="p">]</span>
-</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
-</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="c1"># Case-insensitive language check</span>
-</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;lower-case&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;language&quot;</span><span class="p">]]]],</span> <span class="s2">&quot;python&quot;</span><span class="p">]</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Traditional syntax:</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="p">[</span><span class="s2">&quot;and&quot;</span><span class="p">,</span> 
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>  <span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;active&quot;</span><span class="p">]]],</span> <span class="n">true</span><span class="p">],</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>  <span class="p">[</span><span class="s2">&quot;exists?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;email&quot;</span><span class="p">]]]]</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="p">]</span>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="c1"># With @ syntax:</span>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="p">[</span><span class="s2">&quot;and&quot;</span><span class="p">,</span> 
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>  <span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="s2">&quot;@active&quot;</span><span class="p">,</span> <span class="n">true</span><span class="p">],</span>
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>  <span class="p">[</span><span class="s2">&quot;exists?&quot;</span><span class="p">,</span> <span class="s2">&quot;@email&quot;</span><span class="p">]</span>
+</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="p">]</span>
+</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>
+</span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="c1"># Case-insensitive language check with @ syntax:</span>
+</span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;lower-case&quot;</span><span class="p">,</span> <span class="s2">&quot;@language&quot;</span><span class="p">],</span> <span class="s2">&quot;python&quot;</span><span class="p">]</span>
 </span></code></pre></div>
 <h3 id="path-system-examples">Path System Examples<a class="headerlink" href="#path-system-examples" title="Permanent link">&para;</a></h3>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Any item in &quot;items&quot; list has status &quot;completed&quot;  </span>
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;items&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;wc_level&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;status&quot;</span><span class="p">]]],</span> <span class="s2">&quot;completed&quot;</span><span class="p">]</span>
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
-</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="c1"># Deep search for any &quot;error&quot; field that exists</span>
-</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="p">[</span><span class="s2">&quot;exists?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;wc_recursive&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;error&quot;</span><span class="p">]]]]</span>
-</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
-</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="c1"># Get names of users at specific indices 0 and 2</span>
-</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="c1"># (This path would likely be used with a function that can handle a list of names,</span>
-</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="c1"># or in a context where multiple names are expected)</span>
-</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;users&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;indices&quot;</span><span class="p">,</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">]],</span> <span class="p">[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">]]]</span> 
-</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>
-</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="c1"># Check if any log entry with a key matching &quot;event_.*&quot; has a &quot;level&quot; of &quot;critical&quot;</span>
-</span><span id="__span-9-13"><a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;regex_key&quot;</span><span class="p">,</span> <span class="s2">&quot;event_.*&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;level&quot;</span><span class="p">]]],</span> <span class="s2">&quot;critical&quot;</span><span class="p">]</span>
-</span><span id="__span-9-14"><a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>
-</span><span id="__span-9-15"><a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="c1"># Check if the first three tags include &quot;urgent&quot;</span>
-</span><span id="__span-9-16"><a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="p">[</span><span class="s2">&quot;in?&quot;</span><span class="p">,</span> <span class="s2">&quot;urgent&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;tags&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;slice&quot;</span><span class="p">,</span> <span class="n">null</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="n">null</span><span class="p">]]]]</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># Traditional syntax vs @ syntax comparisons:</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="c1"># Any item in &quot;items&quot; list has status &quot;completed&quot;</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;items&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;wc_level&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;status&quot;</span><span class="p">]]],</span> <span class="s2">&quot;completed&quot;</span><span class="p">]</span>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="s2">&quot;@items.*.status&quot;</span><span class="p">,</span> <span class="s2">&quot;completed&quot;</span><span class="p">]</span>  <span class="c1"># @ syntax</span>
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="c1"># Deep search for any &quot;error&quot; field that exists</span>
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="p">[</span><span class="s2">&quot;exists?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;wc_recursive&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;error&quot;</span><span class="p">]]]]</span>
+</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="p">[</span><span class="s2">&quot;exists?&quot;</span><span class="p">,</span> <span class="s2">&quot;@**.error&quot;</span><span class="p">]</span>  <span class="c1"># @ syntax (if recursive wildcard syntax supported)</span>
+</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>
+</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="c1"># Get names of users at specific indices 0 and 2</span>
+</span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;users&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;indices&quot;</span><span class="p">,</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">]],</span> <span class="p">[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">]]]</span>
+</span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="s2">&quot;@users[0,2].name&quot;</span>  <span class="c1"># @ syntax</span>
+</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>
+</span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a><span class="c1"># Check if any log entry with a key matching &quot;event_.*&quot; has a &quot;level&quot; of &quot;critical&quot;</span>
+</span><span id="__span-11-16"><a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a><span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;regex_key&quot;</span><span class="p">,</span> <span class="s2">&quot;event_.*&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;level&quot;</span><span class="p">]]],</span> <span class="s2">&quot;critical&quot;</span><span class="p">]</span>
+</span><span id="__span-11-17"><a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a>
+</span><span id="__span-11-18"><a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a><span class="c1"># Check if the first three tags include &quot;urgent&quot;</span>
+</span><span id="__span-11-19"><a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a><span class="p">[</span><span class="s2">&quot;in?&quot;</span><span class="p">,</span> <span class="s2">&quot;urgent&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;tags&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;slice&quot;</span><span class="p">,</span> <span class="n">null</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="n">null</span><span class="p">]]]]</span>
+</span><span id="__span-11-20"><a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a><span class="p">[</span><span class="s2">&quot;in?&quot;</span><span class="p">,</span> <span class="s2">&quot;urgent&quot;</span><span class="p">,</span> <span class="s2">&quot;@tags[:3]&quot;</span><span class="p">]</span>  <span class="c1"># @ syntax</span>
+</span><span id="__span-11-21"><a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a>
+</span><span id="__span-11-22"><a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a><span class="c1"># Mixed usage - both syntaxes in same query:</span>
+</span><span id="__span-11-23"><a id="__codelineno-11-23" name="__codelineno-11-23" href="#__codelineno-11-23"></a><span class="p">[</span><span class="s2">&quot;and&quot;</span><span class="p">,</span>
+</span><span id="__span-11-24"><a id="__codelineno-11-24" name="__codelineno-11-24" href="#__codelineno-11-24"></a>  <span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="s2">&quot;@status&quot;</span><span class="p">,</span> <span class="s2">&quot;active&quot;</span><span class="p">],</span>                    <span class="c1"># @ syntax</span>
+</span><span id="__span-11-25"><a id="__codelineno-11-25" name="__codelineno-11-25" href="#__codelineno-11-25"></a>  <span class="p">[</span><span class="s2">&quot;gt?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;length&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="p">[[</span><span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;items&quot;</span><span class="p">]]]],</span> <span class="mi">0</span><span class="p">]</span>  <span class="c1"># traditional syntax</span>
+</span><span id="__span-11-26"><a id="__codelineno-11-26" name="__codelineno-11-26" href="#__codelineno-11-26"></a><span class="p">]</span>
+</span></code></pre></div>
+<h3 id="advanced--syntax-examples">Advanced @ Syntax Examples<a class="headerlink" href="#advanced--syntax-examples" title="Permanent link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># Complex nested access:</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="s2">&quot;@user.profile.settings.theme&quot;</span><span class="p">,</span> <span class="s2">&quot;dark&quot;</span><span class="p">]</span>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="c1"># Array indexing:</span>
+</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="p">[</span><span class="s2">&quot;gt?&quot;</span><span class="p">,</span> <span class="s2">&quot;@scores[0]&quot;</span><span class="p">,</span> <span class="mi">85</span><span class="p">]</span>
+</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="s2">&quot;@data[-1].status&quot;</span><span class="p">,</span> <span class="s2">&quot;final&quot;</span><span class="p">]</span>
+</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>
+</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="c1"># Wildcard operations:</span>
+</span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="p">[</span><span class="s2">&quot;exists?&quot;</span><span class="p">,</span> <span class="s2">&quot;@projects.*.deadline&quot;</span><span class="p">]</span>
+</span><span id="__span-12-10"><a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="p">[</span><span class="s2">&quot;in?&quot;</span><span class="p">,</span> <span class="s2">&quot;urgent&quot;</span><span class="p">,</span> <span class="s2">&quot;@tasks.*.priority&quot;</span><span class="p">]</span>
+</span><span id="__span-12-11"><a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>
+</span><span id="__span-12-12"><a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="c1"># Existence checks:</span>
+</span><span id="__span-12-13"><a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="p">[</span><span class="s2">&quot;exists?&quot;</span><span class="p">,</span> <span class="s2">&quot;@user.preferences.notifications&quot;</span><span class="p">]</span>
+</span><span id="__span-12-14"><a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a><span class="p">[</span><span class="s2">&quot;not&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;exists?&quot;</span><span class="p">,</span> <span class="s2">&quot;@temp_data&quot;</span><span class="p">]]</span>
+</span><span id="__span-12-15"><a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a>
+</span><span id="__span-12-16"><a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a><span class="c1"># In complex boolean expressions:</span>
+</span><span id="__span-12-17"><a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a><span class="p">[</span><span class="s2">&quot;or&quot;</span><span class="p">,</span>
+</span><span id="__span-12-18"><a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a>  <span class="p">[</span><span class="s2">&quot;and&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="s2">&quot;@status&quot;</span><span class="p">,</span> <span class="s2">&quot;active&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;gt?&quot;</span><span class="p">,</span> <span class="s2">&quot;@score&quot;</span><span class="p">,</span> <span class="mi">90</span><span class="p">]],</span>
+</span><span id="__span-12-19"><a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a>  <span class="p">[</span><span class="s2">&quot;and&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;eq?&quot;</span><span class="p">,</span> <span class="s2">&quot;@status&quot;</span><span class="p">,</span> <span class="s2">&quot;trial&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;gt?&quot;</span><span class="p">,</span> <span class="s2">&quot;@score&quot;</span><span class="p">,</span> <span class="mi">95</span><span class="p">]]</span>
+</span><span id="__span-12-20"><a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a><span class="p">]</span>
 </span></code></pre></div>
 <h2 id="design-constraints">Design Constraints<a class="headerlink" href="#design-constraints" title="Permanent link">&para;</a></h2>
 <ol>
@@ -1103,8 +1299,9 @@ Before performing binary operations (AND, OR, XOR, SUBTRACT), <code>JafResultSet
 <li><strong>Tagged AST Paths</strong>: Uniform, explicit path component representation.</li>
 <li><strong>Predictable Performance</strong>: All operations have bounded execution time relative to data size and path complexity.</li>
 <li><strong>Boolean Results for Filtering</strong>: Top-level queries (or conditions in <code>if</code>, <code>and</code>, <code>or</code>) must resolve to boolean values for filtering.</li>
+<li><strong>Syntax Coexistence</strong>: The <code>@</code> notation coexists with traditional <code>["path", ...]</code> syntax, maintaining full backward compatibility.</li>
 </ol>
-<p>This specification defines a minimal, focused JSON filtering language that's powerful enough for real-world use cases while remaining simple and predictable. The path system, with its tagged AST, enhances its explicitness and maintainability. The <code>JafResultSet</code> provides a robust mechanism for working with and combining filter results.</p>
+<p>This specification defines a minimal, focused JSON filtering language that's powerful enough for real-world use cases while remaining simple and predictable. The path system, with its tagged AST and concise <code>@</code> notation, enhances both explicitness and readability. The <code>JafResultSet</code> provides a robust mechanism for working with and combining filter results.</p>
 
 
 

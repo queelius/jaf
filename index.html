@@ -595,9 +595,12 @@
 </ul>
 <p>This "any match is sufficient" behavior (existential quantification) is intuitive for filtering. Universal quantification ("for all items to match") can often be constructed using negation and existential checks.</p>
 <h2 id="available-operators">Available Operators<a class="headerlink" href="#available-operators" title="Permanent link">&para;</a></h2>
-<p>Refer to the <a href="specification/#operator-categories">Full Specification</a> for a detailed list of operators.</p>
+<p>Refer to the <a href="specification/#operator-categories">Full Specification</a> for a detailed list of operators. The library now includes type-checking predicates (<code>is-string?</code>, etc.), additional transformers (<code>first</code>, <code>unique</code>, etc.), the <code>self</code> operator, and variadic arithmetic operators.</p>
 <h2 id="command-line-interface-cli">Command-Line Interface (CLI)<a class="headerlink" href="#command-line-interface-cli" title="Permanent link">&para;</a></h2>
-<p><code>jaf</code> provides a CLI for filtering data and performing operations on result sets. See the <a href="cli_reference/">CLI Reference</a> for details.</p>
+<p><code>jaf</code> provides a CLI for filtering data and performing operations on result sets. See the <a href="cli_reference/">CLI Reference</a> for details. Key features include:
+- <code>jaf filter</code>: The primary filtering command.
+- <code>jaf &lt;and|or|...&gt;</code>: Perform boolean algebra on result sets. Can now take a <code>--query</code> argument for the second operand.
+- <code>jaf resolve</code>: Resolve results back to data, with powerful output options like <code>--extract-path</code> and <code>--output-json-array</code>.</p>
 <h2 id="full-specification">Full Specification<a class="headerlink" href="#full-specification" title="Permanent link">&para;</a></h2>
 <p>For detailed information on all operators, path components, <code>JafResultSet</code> structure, and evaluation rules, please see the <a href="specification/">Full Specification</a>.</p>
 <h2 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">&para;</a></h2>

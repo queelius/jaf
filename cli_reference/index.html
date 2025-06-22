@@ -573,7 +573,12 @@
 </span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>jaf<span class="w"> </span>filter<span class="w"> </span>logs.jsonl<span class="w"> </span>--query<span class="w"> </span><span class="s1">&#39;[&quot;exists?&quot;, [&quot;path&quot;, [[&quot;key&quot;, &quot;error&quot;]]]]&#39;</span><span class="w"> </span>--collection-id<span class="w"> </span><span class="s2">&quot;error_logs_v1&quot;</span>
 </span></code></pre></div>
 <h2 id="result-set-operations-boolean-algebra">Result Set Operations (Boolean Algebra)<a class="headerlink" href="#result-set-operations-boolean-algebra" title="Permanent link">&para;</a></h2>
-<p>These commands perform boolean algebra on <code>JafResultSet</code> instances. Inputs are typically <code>JafResultSet</code> JSON provided via file paths or <code>stdin</code> (<code>-</code>). The output is always a new <code>JafResultSet</code> JSON to <code>stdout</code>.</p>
+<p>These commands perform boolean algebra on <code>JafResultSet</code> instances. The output is always a new <code>JafResultSet</code> JSON to <code>stdout</code>.</p>
+<p><strong>Operand Types:</strong>
+- <strong>First Operand</strong>: A <code>JafResultSet</code> provided via a file path or from <code>stdin</code> (<code>-</code>).
+- <strong>Second Operand (for binary ops)</strong>: Can be either:
+    1. A second <code>JafResultSet</code> from a file path.
+    2. A JAF query string provided via the <code>--query</code> option. This query is executed against the data source of the first <code>JafResultSet</code>.</p>
 <p><strong>General Input Handling:</strong></p>
 <p>For binary operations (e.g., <code>and</code>, <code>or</code>, <code>xor</code>, <code>difference</code>):
 -   <code>jaf &lt;op&gt; &lt;rs1_path_or_-&gt; &lt;rs2_path_or_-&gt;</code>: Specifies both inputs.
@@ -585,64 +590,97 @@
 -   <code>jaf not</code>: Assumes input from <code>stdin</code>.</p>
 <p>It's an error to try to read both inputs from <code>stdin</code> for a binary operation.</p>
 <h3 id="jaf-and"><code>jaf and</code><a class="headerlink" href="#jaf-and" title="Permanent link">&para;</a></h3>
-<p>Performs a logical AND (intersection) on two <code>JafResultSet</code>s.</p>
-<p><strong>Usage:</strong> <code>jaf and [rs1_path_or_-] [rs2_path_or_-]</code></p>
+<p>Performs a logical AND (intersection).</p>
+<p><strong>Usage:</strong>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># With two JafResultSet inputs</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>jaf<span class="w"> </span>and<span class="w"> </span><span class="o">[</span>rs1_path_or_-<span class="o">]</span><span class="w"> </span><span class="o">[</span>rs2_path_or_-<span class="o">]</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># With one JafResultSet and one on-the-fly query</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>jaf<span class="w"> </span>and<span class="w"> </span><span class="o">[</span>rs1_path_or_-<span class="o">]</span><span class="w"> </span>--query<span class="w"> </span><span class="s1">&#39;&lt;query_ast_json_string&gt;&#39;</span>
+</span></code></pre></div></p>
 <h3 id="jaf-or"><code>jaf or</code><a class="headerlink" href="#jaf-or" title="Permanent link">&para;</a></h3>
-<p>Performs a logical OR (union) on two <code>JafResultSet</code>s.</p>
-<p><strong>Usage:</strong> <code>jaf or [rs1_path_or_-] [rs2_path_or_-]</code></p>
+<p>Performs a logical OR (union).</p>
+<p><strong>Usage:</strong>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>jaf<span class="w"> </span>or<span class="w"> </span><span class="o">[</span>rs1_path_or_-<span class="o">]</span><span class="w"> </span><span class="o">[</span>rs2_path_or_-<span class="o">]</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>jaf<span class="w"> </span>or<span class="w"> </span><span class="o">[</span>rs1_path_or_-<span class="o">]</span><span class="w"> </span>--query<span class="w"> </span><span class="s1">&#39;&lt;query_ast_json_string&gt;&#39;</span>
+</span></code></pre></div></p>
 <h3 id="jaf-not"><code>jaf not</code><a class="headerlink" href="#jaf-not" title="Permanent link">&para;</a></h3>
 <p>Performs a logical NOT (complement) on a <code>JafResultSet</code>.</p>
 <p><strong>Usage:</strong> <code>jaf not [rs_path_or_-]</code></p>
 <h3 id="jaf-xor"><code>jaf xor</code><a class="headerlink" href="#jaf-xor" title="Permanent link">&para;</a></h3>
-<p>Performs a logical XOR (symmetric difference) on two <code>JafResultSet</code>s.</p>
-<p><strong>Usage:</strong> <code>jaf xor [rs1_path_or_-] [rs2_path_or_-]</code></p>
+<p>Performs a logical XOR (symmetric difference).</p>
+<p><strong>Usage:</strong>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>jaf<span class="w"> </span>xor<span class="w"> </span><span class="o">[</span>rs1_path_or_-<span class="o">]</span><span class="w"> </span><span class="o">[</span>rs2_path_or_-<span class="o">]</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>jaf<span class="w"> </span>xor<span class="w"> </span><span class="o">[</span>rs1_path_or_-<span class="o">]</span><span class="w"> </span>--query<span class="w"> </span><span class="s1">&#39;&lt;query_ast_json_string&gt;&#39;</span>
+</span></code></pre></div></p>
 <h3 id="jaf-difference"><code>jaf difference</code><a class="headerlink" href="#jaf-difference" title="Permanent link">&para;</a></h3>
-<p>Performs a logical set difference (<code>rs1 - rs2</code>) on two <code>JafResultSet</code>s.</p>
-<p><strong>Usage:</strong> <code>jaf difference [rs1_path_or_-] [rs2_path_or_-]</code></p>
+<p>Performs a logical set difference (<code>rs1 - rs2</code>).</p>
+<p><strong>Usage:</strong>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>jaf<span class="w"> </span>difference<span class="w"> </span><span class="o">[</span>rs1_path_or_-<span class="o">]</span><span class="w"> </span><span class="o">[</span>rs2_path_or_-<span class="o">]</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>jaf<span class="w"> </span>difference<span class="w"> </span><span class="o">[</span>rs1_path_or_-<span class="o">]</span><span class="w"> </span>--query<span class="w"> </span><span class="s1">&#39;&lt;query_ast_json_string&gt;&#39;</span>
+</span></code></pre></div></p>
 <p><strong>Boolean Operation Examples:</strong></p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Create result sets</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>jaf<span class="w"> </span>filter<span class="w"> </span>users.jsonl<span class="w"> </span>--query<span class="w"> </span><span class="s1">&#39;[&quot;eq?&quot;,[&quot;path&quot;,[[&quot;key&quot;,&quot;status&quot;]]],&quot;active&quot;]&#39;</span><span class="w"> </span>&gt;<span class="w"> </span>active.jrs
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>jaf<span class="w"> </span>filter<span class="w"> </span>users.jsonl<span class="w"> </span>--query<span class="w"> </span><span class="s1">&#39;[&quot;in?&quot;,&quot;dev&quot;,[&quot;path&quot;,[[&quot;key&quot;,&quot;tags&quot;]]]]&#39;</span><span class="w"> </span>&gt;<span class="w"> </span>devs.jrs
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="c1"># Active developers</span>
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>jaf<span class="w"> </span>and<span class="w"> </span>active.jrs<span class="w"> </span>devs.jrs<span class="w"> </span>&gt;<span class="w"> </span>active_devs.jrs
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>
-</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="c1"># Users who are active OR developers</span>
-</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>jaf<span class="w"> </span>or<span class="w"> </span>active.jrs<span class="w"> </span>devs.jrs
-</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>
-</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="c1"># Users who are NOT active</span>
-</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>jaf<span class="w"> </span>not<span class="w"> </span>active.jrs
-</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>
-</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="c1"># Users who are active but NOT developers</span>
-</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>jaf<span class="w"> </span>difference<span class="w"> </span>active.jrs<span class="w"> </span>devs.jrs
-</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>
-</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="c1"># Using stdin for the first input</span>
-</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>cat<span class="w"> </span>active.jrs<span class="w"> </span><span class="p">|</span><span class="w"> </span>jaf<span class="w"> </span>and<span class="w"> </span>-<span class="w"> </span>devs.jrs
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># Create result sets</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>jaf<span class="w"> </span>filter<span class="w"> </span>users.jsonl<span class="w"> </span>--query<span class="w"> </span><span class="s1">&#39;[&quot;eq?&quot;,[&quot;path&quot;,[[&quot;key&quot;,&quot;status&quot;]]],&quot;active&quot;]&#39;</span><span class="w"> </span>&gt;<span class="w"> </span>active.jrs
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>jaf<span class="w"> </span>filter<span class="w"> </span>users.jsonl<span class="w"> </span>--query<span class="w"> </span><span class="s1">&#39;[&quot;in?&quot;,&quot;dev&quot;,[&quot;path&quot;,[[&quot;key&quot;,&quot;tags&quot;]]]]&#39;</span><span class="w"> </span>&gt;<span class="w"> </span>devs.jrs
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="c1"># Active developers</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>jaf<span class="w"> </span>and<span class="w"> </span>active.jrs<span class="w"> </span>devs.jrs<span class="w"> </span>&gt;<span class="w"> </span>active_devs.jrs
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="c1"># Users who are active OR developers</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>jaf<span class="w"> </span>or<span class="w"> </span>active.jrs<span class="w"> </span>devs.jrs
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="c1"># Users who are NOT active</span>
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>jaf<span class="w"> </span>not<span class="w"> </span>active.jrs
+</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>
+</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="c1"># Users who are active but NOT developers</span>
+</span><span id="__span-6-15"><a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>jaf<span class="w"> </span>difference<span class="w"> </span>active.jrs<span class="w"> </span>devs.jrs
+</span><span id="__span-6-16"><a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>
+</span><span id="__span-6-17"><a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="c1"># Users who are active but NOT developers (using --query)</span>
+</span><span id="__span-6-18"><a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a>jaf<span class="w"> </span>filter<span class="w"> </span>users.jsonl<span class="w"> </span>--query<span class="w"> </span><span class="s1">&#39;[&quot;eq?&quot;, &quot;@status&quot;, &quot;active&quot;]&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jaf<span class="w"> </span>difference<span class="w"> </span>--query<span class="w"> </span><span class="s1">&#39;[&quot;in?&quot;,&quot;dev&quot;,&quot;@tags&quot;]&#39;</span>
+</span><span id="__span-6-19"><a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a>
+</span><span id="__span-6-20"><a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="c1"># Using stdin for the first input</span>
+</span><span id="__span-6-21"><a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a>cat<span class="w"> </span>active.jrs<span class="w"> </span><span class="p">|</span><span class="w"> </span>jaf<span class="w"> </span>and<span class="w"> </span>-<span class="w"> </span>devs.jrs
 </span></code></pre></div>
 <h2 id="jaf-resolve"><code>jaf resolve</code><a class="headerlink" href="#jaf-resolve" title="Permanent link">&para;</a></h2>
-<p>Resolves a <code>JafResultSet</code> (from a file or <code>stdin</code>) back to the original JSON objects that its indices point to. Outputs a stream of these objects in JSONL format to <code>stdout</code>.</p>
-<p>This command requires the input <code>JafResultSet</code> to contain sufficient metadata to locate the original data:
--   Either <code>filenames_in_collection</code> (a list of file paths) must be present and valid.
--   Or, <code>collection_id</code> must be a string representing a path to a single, existing data file.</p>
-<p><strong>Usage:</strong></p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>jaf<span class="w"> </span>resolve<span class="w"> </span><span class="o">[</span>jrs_path_or_-<span class="o">]</span>
-</span></code></pre></div>
+<p>Resolves a <code>JafResultSet</code> (from a file or <code>stdin</code>) back to the original data or derived values.</p>
+<p><strong>Usage:</strong>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>jaf<span class="w"> </span>resolve<span class="w"> </span><span class="o">[</span>jrs_path_or_-<span class="o">]</span><span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+</span></code></pre></div></p>
 <p><strong>Arguments:</strong></p>
 <ul>
 <li><code>[jrs_path_or_-]</code>: Path to the <code>JafResultSet</code> JSON file. If omitted or <code>-</code>, reads from <code>stdin</code>.</li>
 </ul>
+<p><strong>Output Formatting Options:</strong></p>
+<p>These options are mutually exclusive.</p>
+<ul>
+<li><code>--output-jsonl</code>: Output the results as JSONL, one object per line (this is the default behavior).</li>
+<li><code>--output-json-array</code>: Output the results as a single, pretty-printed JSON array.</li>
+<li><code>--output-indices</code>: Output a simple JSON array of the matching indices.</li>
+<li><code>--extract-path &lt;PATH_STR&gt;</code>: For each matching object, extract the value at the given JAF path string (e.g., <code>'@user.name'</code>).</li>
+<li><code>--apply-query &lt;QUERY_AST&gt;</code>: For each matching object, apply the given JAF query and print the result. The query does not need to be a predicate.</li>
+</ul>
 <p><strong>Output:</strong></p>
 <ul>
-<li>A stream of original JSON objects (JSONL) to <code>stdout</code>.</li>
+<li>A stream of data to <code>stdout</code> in the format specified by the output options.</li>
 </ul>
 <p><strong>Example:</strong></p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Assuming active_devs.jrs was created by a filter or boolean operation</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="c1"># and contains metadata pointing to the original users.jsonl</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>jaf<span class="w"> </span>resolve<span class="w"> </span>active_devs.jrs
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># This will print the full JSON objects for each active developer.</span>
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="c1"># Piping from a boolean operation</span>
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>jaf<span class="w"> </span>and<span class="w"> </span>active.jrs<span class="w"> </span>devs.jrs<span class="w"> </span><span class="p">|</span><span class="w"> </span>jaf<span class="w"> </span>resolve
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Assuming active_devs.jrs was created by a filter or boolean operation</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="c1"># and contains metadata pointing to the original users.jsonl</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>jaf<span class="w"> </span>resolve<span class="w"> </span>active_devs.jrs
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># This will print the full JSON objects for each active developer.</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="c1"># Piping from a boolean operation</span>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>jaf<span class="w"> </span>and<span class="w"> </span>active.jrs<span class="w"> </span>devs.jrs<span class="w"> </span><span class="p">|</span><span class="w"> </span>jaf<span class="w"> </span>resolve
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="c1"># Extract just the user IDs from the result</span>
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>jaf<span class="w"> </span>resolve<span class="w"> </span>active_devs.jrs<span class="w"> </span>--extract-path<span class="w"> </span><span class="s1">&#39;@user.id&#39;</span>
+</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>
+</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="c1"># Apply a query to transform the results</span>
+</span><span id="__span-8-13"><a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>jaf<span class="w"> </span>resolve<span class="w"> </span>active_devs.jrs<span class="w"> </span>--apply-query<span class="w"> </span><span class="s1">&#39;[&quot;+&quot;, &quot;@score&quot;, 5]&#39;</span>
+</span><span id="__span-8-14"><a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>
+</span><span id="__span-8-15"><a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="c1"># Output as a JSON array</span>
+</span><span id="__span-8-16"><a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a>jaf<span class="w"> </span>resolve<span class="w"> </span>active_devs.jrs<span class="w"> </span>--output-json-array
 </span></code></pre></div>
 
 
