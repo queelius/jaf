@@ -62,5 +62,6 @@ def jaf(data: List[Any], query: Union[List, str], collection_id: Optional[Any] =
         indices=matching_indices,
         collection_size=len(data),
         collection_id=collection_id,
-        collection_source=collection_source
+        collection_source=collection_source,
+        query=query
     )

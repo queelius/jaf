@@ -22,7 +22,8 @@ class JafResultSet:
                  indices: Union[Iterable[int], Set[int]], 
                  collection_size: int, 
                  collection_id: Optional[Any] = None,
-                 collection_source: Optional[Dict[str, Any]] = None):
+                 collection_source: Optional[Dict[str, Any]] = None,
+                 query: Optional[Any] = None):
         if not isinstance(collection_size, int) or collection_size < 0:
             raise ValueError("collection_size must be a non-negative integer.")
         
@@ -30,6 +31,7 @@ class JafResultSet:
         self.collection_size: int = collection_size
         self.collection_id: Optional[Any] = collection_id
         self.collection_source: Optional[Dict[str, Any]] = collection_source
+        self.query: Optional[Any] = query
 
         # Validate indices
         if collection_size == 0 and self.indices:
@@ -88,12 +90,14 @@ class JafResultSet:
         """
         self._check_compatibility(other)
         new_indices = self.indices.intersection(other.indices)
+        new_query = ["and", self.query, other.query] if self.query and other.query else None
         return JafResultSet(
             indices=new_indices,
             collection_size=self.collection_size,
             collection_id=self.collection_id or other.collection_id,
             collection_source=self.collection_source
             or other.collection_source,
+            query=new_query,
         )
 
     def __and__(self, other: Any) -> "JafResultSet":
@@ -114,12 +118,14 @@ class JafResultSet:
         """
         self._check_compatibility(other)
         new_indices = self.indices.union(other.indices)
+        new_query = ["or", self.query, other.query] if self.query and other.query else None
         return JafResultSet(
             indices=new_indices,
             collection_size=self.collection_size,
             collection_id=self.collection_id or other.collection_id,
             collection_source=self.collection_source
             or other.collection_source,
+            query=new_query,
         )
 
     def __or__(self, other: Any) -> "JafResultSet":
@@ -141,11 +147,13 @@ class JafResultSet:
         """
         all_indices = set(range(self.collection_size))
         new_indices = all_indices.difference(self.indices)
+        new_query = ["not", self.query] if self.query else None
         return JafResultSet(
             indices=new_indices,
             collection_size=self.collection_size,
             collection_id=self.collection_id,
             collection_source=self.collection_source,
+            query=new_query,
         )
 
     def __invert__(self) -> "JafResultSet":
@@ -165,12 +173,16 @@ class JafResultSet:
         """
         self._check_compatibility(other)
         new_indices = self.indices.symmetric_difference(other.indices)
+        new_query = None
+        if self.query and other.query:
+            new_query = ["or", ["and", self.query, ["not", other.query]], ["and", ["not", self.query], other.query]]
         return JafResultSet(
             indices=new_indices,
             collection_size=self.collection_size,
             collection_id=self.collection_id or other.collection_id,
             collection_source=self.collection_source
             or other.collection_source,
+            query=new_query,
         )
 
     def __xor__(self, other: Any) -> "JafResultSet":
@@ -194,12 +206,14 @@ class JafResultSet:
         """
         self._check_compatibility(other)
         new_indices = self.indices.difference(other.indices)
+        new_query = ["and", self.query, ["not", other.query]] if self.query and other.query else None
         return JafResultSet(
             indices=new_indices,
             collection_size=self.collection_size,
             collection_id=self.collection_id or other.collection_id,
             collection_source=self.collection_source
             or other.collection_source,
+            query=new_query,
         )
 
     def __sub__(self, other: Any) -> "JafResultSet":
@@ -217,6 +231,7 @@ class JafResultSet:
             "collection_size": self.collection_size,
             "collection_id": self.collection_id,
             "collection_source": self.collection_source,
+            "query": self.query,
         }
 
     @classmethod
@@ -256,13 +271,15 @@ class JafResultSet:
             collection_size=collection_size,
             collection_id=data.get("collection_id"),
             collection_source=collection_source,
+            query=data.get("query"),
         )
 
     def __repr__(self) -> str:
         return (f"JafResultSet(indices={sorted(list(self.indices))}, "
                 f"collection_size={self.collection_size}, "
                 f"collection_id={self.collection_id}, "
-                f"collection_source={self.collection_source})")
+                f"collection_source={self.collection_source}, "
+                f"query={self.query})")
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, JafResultSet):
@@ -270,7 +287,8 @@ class JafResultSet:
         return (self.indices == other.indices and
                 self.collection_size == other.collection_size and
                 self.collection_id == other.collection_id and
-                self.collection_source == other.collection_source)
+                self.collection_source == other.collection_source and
+                self.query == other.query)
     
     def __len__(self) -> int:
         """Returns the number of matching indices in the result set."""
@@ -306,6 +324,28 @@ class JafResultSet:
 
     def __sub__(self, other: 'JafResultSet') -> 'JafResultSet':
         return self.SUBTRACT(other)
+
+    def validate(self) -> None:
+        """
+        Performs a comprehensive validation of the JafResultSet.
+        - Checks internal consistency.
+        - Tries to load the collection to verify the source and size.
+        """
+        # Internal consistency is checked in __init__.
+        # Now, check if the source is loadable and size matches.
+        logger.info("Performing validation...")
+        try:
+            all_objects = load_collection(self.collection_source)
+            if len(all_objects) != self.collection_size:
+                raise JafResultSetError(
+                    f"Collection size mismatch: JRS has {self.collection_size}, "
+                    f"but source has {len(all_objects)} objects."
+                )
+            logger.info("Collection source loaded and size matches.")
+        except JafResultSetError as e:
+            raise e
+        except Exception as e:
+            raise JafResultSetError(f"Failed to load collection from source: {e}") from e
 
     def get_matching_objects(self) -> List[Any]:
         """

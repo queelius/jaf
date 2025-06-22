@@ -119,25 +119,30 @@ cat active.jrs | jaf and - devs.jrs
 
 ## `jaf resolve`
 
-Resolves a `JafResultSet` (from a file or `stdin`) back to the original JSON objects that its indices point to. Outputs a stream of these objects in JSONL format to `stdout`.
-
-This command requires the input `JafResultSet` to contain sufficient metadata to locate the original data:
--   Either `filenames_in_collection` (a list of file paths) must be present and valid.
--   Or, `collection_id` must be a string representing a path to a single, existing data file.
+Resolves a `JafResultSet` (from a file or `stdin`) back to the original data or derived values.
 
 **Usage:**
-
 ```bash
-jaf resolve [jrs_path_or_-]
+jaf resolve [jrs_path_or_-] [options]
 ```
 
 **Arguments:**
 
 -   `[jrs_path_or_-]`: Path to the `JafResultSet` JSON file. If omitted or `-`, reads from `stdin`.
 
+**Output Formatting Options:**
+
+These options are mutually exclusive.
+
+-   `--output-jsonl`: Output the results as JSONL, one object per line (this is the default behavior).
+-   `--output-json-array`: Output the results as a single, pretty-printed JSON array.
+-   `--output-indices`: Output a simple JSON array of the matching indices.
+-   `--extract-path <PATH_STR>`: For each matching object, extract the value at the given JAF path string (e.g., `'@user.name'`).
+-   `--apply-query <QUERY_AST>`: For each matching object, apply the given JAF query and print the result. The query does not need to be a predicate.
+
 **Output:**
 
--   A stream of original JSON objects (JSONL) to `stdout`.
+-   A stream of data to `stdout` in the format specified by the output options.
 
 **Example:**
 
@@ -149,4 +154,13 @@ jaf resolve active_devs.jrs
 
 # Piping from a boolean operation
 jaf and active.jrs devs.jrs | jaf resolve
+
+# Extract just the user IDs from the result
+jaf resolve active_devs.jrs --extract-path '@user.id'
+
+# Apply a query to transform the results
+jaf resolve active_devs.jrs --apply-query '["pick", ["path", [["key", "name"], ["key", "email"]]]]'
+
+# Output as a JSON array
+jaf resolve active_devs.jrs --output-json-array
 ```

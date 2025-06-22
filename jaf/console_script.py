@@ -6,8 +6,11 @@ import sys
 from typing import List, Dict, Optional, Union, Any
 from .jaf import jaf, jafError
 from .result_set import JafResultSet, JafResultSetError
-# Import from the new io_utils module
-from .io_utils import walk_data_files, load_objects_from_file
+from . import __version__
+from .jaf_eval import jaf_eval
+from .io_utils import walk_data_files, load_objects_from_file, load_collection
+from .path_conversion import string_to_path_ast
+from .path_exceptions import PathSyntaxError
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +20,11 @@ def main():
     parser = argparse.ArgumentParser(
         description="JAF: JSON Array Filter and Result Set Operations.",
         formatter_class=argparse.RawTextHelpFormatter
+    )
+    parser.add_argument(
+        "-v", "--version",
+        action="version",
+        version=f"%(prog)s {__version__}"
     )
     parser.add_argument(
         "--log-level",
@@ -61,52 +69,58 @@ def main():
 
     # --- Boolean Algebra Subcommands ---
     # Helper to add common args for boolean ops
-    def add_boolean_op_args(p, num_inputs=2):
+    def add_boolean_op_args(p, op_name: str, num_inputs=2):
         if num_inputs == 1: # For unary operations like NOT
             p.add_argument(
                 "input_rs1",
                 type=str,
-                nargs='?',        # Makes it optional on the command line
-                default="-",      # Defaults to stdin if not explicitly provided
+                nargs='?',
+                default="-",
                 help="Path to the JafResultSet JSON file, or '-' for stdin. Defaults to stdin if no path is given."
             )
         elif num_inputs >= 2: # For binary operations like AND, OR
             p.add_argument(
                 "input_rs1",
                 type=str,
-                nargs='?',        # Make optional
-                default="-",      # Default to stdin. If a single path is given, it's captured by input_rs2 if input_rs1 remains '-'
-                help="Path to the first JafResultSet or '-'. If only one path is given after the command (e.g. 'jaf or file.txt'), this defaults to stdin and 'file.txt' becomes the second input."
+                nargs='?',
+                default="-",
+                help=f"Path to the first JafResultSet for '{op_name}'. Defaults to stdin."
             )
-            # Ensure input_rs2 is only added if num_inputs expects it.
-            # For binary ops, input_rs2 captures the second explicit path, or the first if input_rs1 was stdin.
-            p.add_argument(
+            
+            # The second operand can be another JRS or a query to be run on the fly.
+            group = p.add_mutually_exclusive_group()
+            group.add_argument(
                 "input_rs2",
                 type=str,
-                nargs='?',        # Make optional
-                default=None,     # No file if not provided as a second argument
-                help="Path to the second JafResultSet. Used if two file paths are specified, or if one is specified and the first input is stdin."
+                nargs='?',
+                default=None,
+                help="Path to the second JafResultSet. Cannot be used with --query."
+            )
+            group.add_argument(
+                "--query",
+                type=str,
+                help="A JAF query to run against the first input's data source. Cannot be used with a second JRS path."
             )
 
-    and_parser = subparsers.add_parser("and", help="Perform logical AND on two JafResultSets.")
-    add_boolean_op_args(and_parser, 2)
+    and_parser = subparsers.add_parser("and", help="Perform logical AND on two JafResultSets, or a JRS and a new query.")
+    add_boolean_op_args(and_parser, "and", 2)
 
-    or_parser = subparsers.add_parser("or", help="Perform logical OR on two JafResultSets.")
-    add_boolean_op_args(or_parser, 2)
+    or_parser = subparsers.add_parser("or", help="Perform logical OR on two JafResultSets, or a JRS and a new query.")
+    add_boolean_op_args(or_parser, "or", 2)
 
     not_parser = subparsers.add_parser("not", help="Perform logical NOT on a JafResultSet.")
-    add_boolean_op_args(not_parser, 1)
+    add_boolean_op_args(not_parser, "not", 1)
 
-    xor_parser = subparsers.add_parser("xor", help="Perform logical XOR on two JafResultSets.")
-    add_boolean_op_args(xor_parser, 2)
+    xor_parser = subparsers.add_parser("xor", help="Perform logical XOR on two JafResultSets, or a JRS and a new query.")
+    add_boolean_op_args(xor_parser, "xor", 2)
 
-    diff_parser = subparsers.add_parser("difference", help="Perform logical DIFFERENCE (rs1 - rs2) on two JafResultSets.")
-    add_boolean_op_args(diff_parser, 2)
+    diff_parser = subparsers.add_parser("difference", help="Perform logical DIFFERENCE (rs1 - rs2) on two JafResultSets, or a JRS and a new query.")
+    add_boolean_op_args(diff_parser, "difference", 2)
 
     # --- 'resolve' Subcommand ---
     resolve_parser = subparsers.add_parser(
         "resolve", 
-        help="Resolve a JafResultSet to original JSON objects (JSONL). Reads JRS from stdin or file."
+        help="Resolve a JafResultSet to original JSON objects or derived values. Reads JRS from stdin or file."
     )
     resolve_parser.add_argument(
         "input_jrs",
@@ -115,10 +129,50 @@ def main():
         default="-",
         help="Path to the JafResultSet JSON file, or '-' for stdin. Defaults to stdin if no path is given."
     )
+    
+    # Add mutually exclusive output format options
+    output_group = resolve_parser.add_mutually_exclusive_group()
+    output_group.add_argument(
+        "--output-jsonl",
+        action="store_true",
+        help="Output the results as JSONL, one object per line (default behavior)."
+    )
+    output_group.add_argument(
+        "--output-json-array",
+        action="store_true",
+        help="Output the results as a single, pretty-printed JSON array."
+    )
+    output_group.add_argument(
+        "--output-indices",
+        action="store_true",
+        help="Output a simple JSON array of the matching indices."
+    )
+    output_group.add_argument(
+        "--extract-path",
+        type=str,
+        metavar="PATH_STR",
+        help="For each matching object, extract and print the value at the given JAF path string (e.g., '@user.name')."
+    )
+    output_group.add_argument(
+        "--apply-query",
+        type=str,
+        metavar="QUERY_AST",
+        help="For each matching object, apply the given JAF query and print the result. The query does not need to be a predicate."
+    )
 
     # --- 'info' Subcommand ---
     info_parser = subparsers.add_parser("info", help="Display summary information about a JafResultSet.")
     info_parser.add_argument(
+        "input_jrs",
+        type=str,
+        nargs='?',
+        default="-",
+        help="Path to the JafResultSet JSON file, or '-' for stdin. Defaults to stdin."
+    )
+
+    # --- 'validate' Subcommand ---
+    validate_parser = subparsers.add_parser("validate", help="Validate a JafResultSet.")
+    validate_parser.add_argument(
         "input_jrs",
         type=str,
         nargs='?',
@@ -134,12 +188,14 @@ def main():
     # --- Command Dispatch ---
     if args.command == "filter":
         handle_filter_command(args)
-    elif args.command in ["and", "or", "not", "xor", "difference"]:
-        handle_boolean_command(args)
     elif args.command == "resolve":
         handle_resolve_command(args)
+    elif args.command in {"and", "or", "not", "xor", "difference"}:
+        handle_boolean_command(args)
     elif args.command == "info":
         handle_info_command(args)
+    elif args.command == "validate":
+        handle_validate_command(args)
     else:
         parser.print_help()
         sys.exit(1)
@@ -247,6 +303,22 @@ def handle_filter_command(args):
         print(f"An unexpected error occurred during JAF processing: {e_proc}", file=sys.stderr)
         sys.exit(1)
 
+def handle_validate_command(args):
+    """Handles the 'validate' subcommand."""
+    logger.debug(f"Validate command with args: {args}")
+    try:
+        jrs = load_jaf_result_set_from_input(args.input_jrs, "input JafResultSet for validate")
+        jrs.validate()
+        print("JafResultSet is valid.")
+    except (JafResultSetError, ValueError) as e:
+        logger.error(f"Validation failed: {e}", exc_info=False)
+        print(f"Validation failed: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during validation: {e}", exc_info=True)
+        print(f"An unexpected error occurred during validation: {e}", file=sys.stderr)
+        sys.exit(1)
+
 def handle_info_command(args):
     """Handles the 'info' subcommand."""
     logger.debug(f"Info command with args: {args}")
@@ -291,81 +363,72 @@ def handle_boolean_command(args):
     final_result_set: Optional[JafResultSet] = None
     rs1: Optional[JafResultSet] = None
     rs2: Optional[JafResultSet] = None
-    # path_for_rs1 and path_for_rs2 will be determined within each command block
 
     try:
         if args.command == "not":
-            path_for_rs1 = args.input_rs1 # Defaults to '-' via argparse
+            path_for_rs1 = args.input_rs1
             rs1 = load_jaf_result_set_from_input(path_for_rs1, "input_rs1 for NOT")
             final_result_set = rs1.NOT()
         
-        elif args.command == "and":
-            path_for_rs1_arg = args.input_rs1 # Default '-'
-            path_for_rs2_arg = args.input_rs2 # Default None
+        else: # Handle binary operations (and, or, xor, difference)
+            if args.query:
+                # Mode 1: One JRS input, one query argument
+                path_for_rs1 = args.input_rs1
+                if args.input_rs2 is not None:
+                     print(f"Error: Cannot specify a second JafResultSet path when using --query for '{args.command}'.", file=sys.stderr)
+                     sys.exit(1)
 
-            if path_for_rs2_arg is None:
-                if path_for_rs1_arg == '-': # e.g. "... | jaf and" or "jaf and"
-                    print("Error: AND operation requires two inputs. Second input is missing (first is stdin).", file=sys.stderr)
-                    sys.exit(1)
-                else: # e.g. "... | jaf and file.txt" or "jaf and file.txt"
-                    actual_path_for_rs1 = "-"
-                    actual_path_for_rs2 = path_for_rs1_arg
-            else: # Both input_rs1 and input_rs2 from argparse have values
-                  # e.g., "jaf and file1.txt file2.txt" or "... | jaf and file2.txt" (input_rs1='-', input_rs2='file2.txt')
-                actual_path_for_rs1 = path_for_rs1_arg
-                actual_path_for_rs2 = path_for_rs2_arg
-            
-            if actual_path_for_rs1 == "-" and actual_path_for_rs2 == "-":
-                print("Error: Cannot read both JafResultSet inputs from stdin for AND operation.", file=sys.stderr)
-                sys.exit(1)
-
-            rs1 = load_jaf_result_set_from_input(actual_path_for_rs1, "input_rs1 for AND")
-            rs2 = load_jaf_result_set_from_input(actual_path_for_rs2, "input_rs2 for AND")
-            final_result_set = rs1.AND(rs2)
-
-        elif args.command == "or":
-            path_for_rs1_arg = args.input_rs1 # Default '-'
-            path_for_rs2_arg = args.input_rs2 # Default None
-
-            if path_for_rs2_arg is None:
-                if path_for_rs1_arg == '-': # e.g. "... | jaf or" or "jaf or"
-                    print("Error: OR operation requires two inputs. Second input is missing (first is stdin).", file=sys.stderr)
-                    sys.exit(1)
-                else: # e.g. "... | jaf or file.txt" or "jaf or file.txt"
-                    actual_path_for_rs1 = "-"
-                    actual_path_for_rs2 = path_for_rs1_arg
-            else: # Both input_rs1 and input_rs2 from argparse have values
-                actual_path_for_rs1 = path_for_rs1_arg
-                actual_path_for_rs2 = path_for_rs2_arg
-
-            if actual_path_for_rs1 == "-" and actual_path_for_rs2 == "-":
-                print("Error: Cannot read both JafResultSet inputs from stdin for OR operation.", file=sys.stderr)
-                sys.exit(1)
+                rs1 = load_jaf_result_set_from_input(path_for_rs1, f"input JafResultSet for {args.command}")
                 
-            rs1 = load_jaf_result_set_from_input(actual_path_for_rs1, "input_rs1 for OR")
-            rs2 = load_jaf_result_set_from_input(actual_path_for_rs2, "input_rs2 for OR")
-            final_result_set = rs1.OR(rs2)
-        
-        # Add elif blocks for other boolean commands like XOR, SUBTRACT here if they are implemented
-        # For example:
-        # elif args.command == "xor":
-        #     # ... similar logic for loading two inputs ...
-        #     final_result_set = rs1.XOR(rs2)
+                if not rs1.collection_source:
+                    print(f"Error: Input JafResultSet from '{path_for_rs1}' has no 'collection_source' and cannot be used with --query.", file=sys.stderr)
+                    sys.exit(1)
+                
+                try:
+                    query_ast = json.loads(args.query)
+                except json.JSONDecodeError:
+                    print(f"Error: --query argument is not valid JSON: {args.query}", file=sys.stderr)
+                    sys.exit(1)
 
-        else:
-            # This 'else' is for commands that are in the main dispatcher's list 
-            # for handle_boolean_command (e.g., if ["and", "or", "not", "xor"] was used in main)
-            # but are not explicitly handled by an if/elif args.command == "..." above.
-            # Given the main dispatcher currently only sends "and", "or", "not",
-            # and all are handled, this else block should ideally be unreachable.
-            # It's a safeguard for future expansion if the dispatcher list changes
-            # and this function isn't updated accordingly.
-            logger.error(f"Internal error: Unhandled boolean command '{args.command}' in handle_boolean_command.")
-            print(f"Error: Unhandled boolean command '{args.command}'. This is an internal error.", file=sys.stderr)
-            sys.exit(1) # Critical internal error
-            
-    except JafResultSetError as e: 
-        logger.error(f"Error during boolean operation '{args.command}': {e}", exc_info=False) 
+                logger.info(f"Loading collection from source to apply new query: {rs1.collection_source}")
+                all_objects = load_collection(rs1.collection_source)
+                rs2 = jaf(all_objects, query_ast, collection_id=rs1.collection_id, collection_source=rs1.collection_source)
+
+            else:
+                # Mode 2: Two JRS inputs (original behavior)
+                path_for_rs1_arg = args.input_rs1
+                path_for_rs2_arg = args.input_rs2
+
+                if path_for_rs2_arg is None:
+                    if path_for_rs1_arg == '-':
+                        print(f"Error: {args.command.upper()} operation requires two inputs. Second input is missing (first is stdin).", file=sys.stderr)
+                        sys.exit(1)
+                    else:
+                        actual_path_for_rs1 = "-"
+                        actual_path_for_rs2 = path_for_rs1_arg
+                else:
+                    actual_path_for_rs1 = path_for_rs1_arg
+                    actual_path_for_rs2 = path_for_rs2_arg
+                
+                if actual_path_for_rs1 == "-" and actual_path_for_rs2 == "-":
+                    print(f"Error: Cannot read both JafResultSet inputs from stdin for {args.command.upper()} operation.", file=sys.stderr)
+                    sys.exit(1)
+                
+                rs1 = load_jaf_result_set_from_input(actual_path_for_rs1, f"input_rs1 for {args.command.upper()}")
+                rs2 = load_jaf_result_set_from_input(actual_path_for_rs2, f"input_rs2 for {args.command.upper()}")
+
+            # Perform the operation
+            if args.command == "and":
+                final_result_set = rs1.AND(rs2)
+            elif args.command == "or":
+                final_result_set = rs1.OR(rs2)
+            elif args.command == "xor":
+                final_result_set = rs1.XOR(rs2)
+            elif args.command == "difference":
+                final_result_set = rs1.SUBTRACT(rs2)
+
+    except JafResultSetError as e:
+        logger.error(f"JafResultSetError during boolean operation '{args.command}': {e}", exc_info=True) 
         print(f"Error: {e}", file=sys.stderr) 
         sys.exit(1)
     except ValueError as e: # Catches ValueErrors from JRS.from_dict or our own checks
@@ -428,22 +491,52 @@ def handle_resolve_command(args): # Renamed from handle_explode_command
     logger.debug(f"Resolve command with args: {args}")
     try:
         input_jrs = load_jaf_result_set_from_input(args.input_jrs, "input JafResultSet for resolve")
-        matching_objects = input_jrs.get_matching_objects() 
+
+        if args.output_indices:
+            print(json.dumps(sorted(list(input_jrs.indices))))
+            return
+
+        matching_objects = input_jrs.get_matching_objects()
         
         if not matching_objects and input_jrs.indices:
             logger.warning(
                 f"Resolve command: JafResultSet has indices but no matching objects were ultimately retrieved. "
-                f"This might occur if original data sources were empty or yielded no items for the given indices. "
                 f"Source: {input_jrs.collection_source or input_jrs.collection_id}"
             )
         
-        _print_objects_as_jsonl(matching_objects) # Already prints compact JSONL
+        # Determine the final list of results to be printed
+        final_results = matching_objects # Default case
+        if args.extract_path:
+            path_str = args.extract_path
+            if path_str.startswith('@'):
+                path_str = path_str[1:]
+            try:
+                path_ast = string_to_path_ast(path_str)
+                query_ast = ["path", path_ast]
+                final_results = [jaf_eval.eval(query_ast, obj) for obj in matching_objects]
+            except PathSyntaxError as e:
+                print(f"Error: Invalid path string for --extract-path: {e}", file=sys.stderr)
+                sys.exit(1)
+        
+        elif args.apply_query:
+            try:
+                query_ast = json.loads(args.apply_query)
+                final_results = [jaf_eval.eval(query_ast, obj) for obj in matching_objects]
+            except json.JSONDecodeError:
+                print(f"Error: --apply-query argument is not valid JSON: {args.apply_query}", file=sys.stderr)
+                sys.exit(1)
+
+        # Format and print the final results
+        if args.output_json_array:
+            print(json.dumps(final_results, indent=2))
+        else: # Default is JSONL
+            _print_objects_as_jsonl(final_results)
             
     except JafResultSetError as e: 
         logger.error(f"Error during resolve operation: {e}", exc_info=False)
         print(f"Error: {e}", file=sys.stderr) 
         sys.exit(1)
-    except ValueError as e: 
+    except (ValueError, jafError) as e: 
         logger.error(f"ValueError during resolve operation setup: {e}", exc_info=True)
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)

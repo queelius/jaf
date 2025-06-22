@@ -54,7 +54,8 @@ class TestJafResultSetSerialization:
             "indices": [0, 1, 2], # to_dict sorts indices
             "collection_size": 5,
             "collection_id": "id_test",
-            "collection_source": None
+            "collection_source": None,
+            "query": None
         }
         assert rs.to_dict() == expected
 
@@ -64,7 +65,8 @@ class TestJafResultSetSerialization:
             "indices": [],
             "collection_size": 3,
             "collection_id": None,
-            "collection_source": None
+            "collection_source": None,
+            "query": None
         }
         assert rs.to_dict() == expected
 
