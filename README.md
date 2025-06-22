@@ -128,6 +128,7 @@ This "any match is sufficient" behavior (existential quantification) is intuitiv
 
 - `path`: `["path", path_components_list]` - Extracts value(s) using the tagged AST path.
 - `@`: `"@path.string"` or `["@", path_expr]` - Concise path notation (equivalent to `path`).
+- `self`: `["self"]` - Refers to the entire root object being evaluated.
 - `if`: `["if", condition_expr, true_expr, false_expr]` - Conditional.
 - `and`: `["and", expr1, expr2, ...]` - Logical AND (short-circuiting).
 - `or`: `["or", expr1, expr2, ...]` - Logical OR (short-circuiting).
@@ -137,16 +138,17 @@ This "any match is sufficient" behavior (existential quantification) is intuitiv
 ### Predicates (Return Boolean)
 
 - `eq?`, `neq?`, `gt?`, `gte?`, `lt?`, `lte?` (Comparison)
-- `in?` (Membership)
+- `in?`, `contains?` (Membership)
 - `starts-with?`, `ends-with?`, `regex-match?` (String matching)
 - `close-match?`, `partial-match?` (Fuzzy string matching)
+- `is-string?`, `is-number?`, `is-list?`, `is-dict?`, `is-null?`, `is-empty?` (Type checking)
 
 ### Value Extractors & Transformers
 
-- `length`: `["length", list_or_string]`
-- `type`: `["type", arg]`
-- `keys`: `["keys", object]`
-- `lower-case`, `upper-case` (String case)
+- `length`, `type`, `keys`, `first`, `last`, `unique` (Data access)
+- `lower-case`, `upper-case`, `split`, `join` (String case/manipulation)
+- `+`, `-`, `*`, `/` (Variadic arithmetic)
+- `%` (Modulo)
 - `now`, `date`, `datetime`, `date-diff`, `days`, `seconds` (Date/Time utilities)
 
 ## Command-Line Interface (CLI)
@@ -183,11 +185,13 @@ jaf filter data_dir --query '["and", ["eq?", "@status", "active"], ["gt?", "@cou
 
 Treating JAF query results (`JafResultSet` instances) as sets allows us to apply boolean algebra (AND, OR, NOT, etc.) to combine them. This is beneficial for modularity, clarity, and reusability. Inputs for these commands are `JafResultSet` JSON, typically from `stdin` or files. Output is a new `JafResultSet` JSON.
 
-- **`jaf and [rs1_path_or_-] [rs2_path_or_-]`**: Logical AND (intersection).
-- **`jaf or [rs1_path_or_-] [rs2_path_or_-]`**: Logical OR (union).
+Binary operations (`and`, `or`, etc.) can take a second operand as either another `JafResultSet` or a new `--query` to be executed on the fly against the first result set's data source.
+
+- **`jaf and [rs1_path_or_-] [rs2_path_or_- | --query <q>]`**: Logical AND (intersection).
+- **`jaf or [rs1_path_or_-] [rs2_path_or_- | --query <q>]`**: Logical OR (union).
 - **`jaf not [rs_path_or_-]`**: Logical NOT (complement).
-- **`jaf xor [rs1_path_or_-] [rs2_path_or_-]`**: Logical XOR (symmetric difference).
-- **`jaf difference [rs1_path_or_-] [rs2_path_or_-]`**: Logical SUBTRACT (rs1 - rs2).
+- **`jaf xor [rs1_path_or_-] [rs2_path_or_- | --query <q>]`**: Logical XOR (symmetric difference).
+- **`jaf difference [rs1_path_or_-] [rs2_path_or_- | --query <q>]`**: Logical SUBTRACT (rs1 - rs2).
 
 Inputs can be file paths or `-` for `stdin`.
 - `jaf op - file2.json`: rs1 from stdin, rs2 from file2.json
@@ -205,23 +209,27 @@ jaf filter users.jsonl --query '["in?", "dev", "@tags"]' > rs_dev.json
 # Find active developers
 jaf and rs_active.json rs_dev.json > rs_active_devs.json
 
-# Alternatively, using pipes:
+# Alternatively, using pipes and the --query feature:
 jaf filter users.jsonl --query '["eq?", "@status", "active"]' | \
-  jaf and - <(jaf filter users.jsonl --query '["in?", "dev", "@tags"]') > rs_active_devs_pipe.json
-```
+  jaf and --query '["in?", "dev", "@tags"]' > rs_active_devs_pipe.json
 
 ### `jaf resolve`
 
-Resolves a `JafResultSet` (from file or `stdin`) to the original JSON objects, outputting them as JSONL. This requires the `JafResultSet` to have a resolvable `collection_id` (as a file path) or `filenames_in_collection`.
+Resolves a `JafResultSet` back to its original data or derived values. It offers multiple output formats.
 
-```bash
-jaf resolve [jrs_path_or_-]
-```
+**Usage:** `jaf resolve [jrs_path_or_-] [options]`
+
+**Key Options:**
+- `--output-json-array`: Output as a single JSON array.
+- `--output-indices`: Output just the integer indices.
+- `--extract-path <path>`: Extract a specific value from each matching object (e.g., `--extract-path "@user.name"`).
+- `--apply-query <query>`: Apply a new JAF query to transform each matching object.
+
 **Example:**
 ```bash
-# Assuming rs_active_devs.json was created as above
-jaf resolve rs_active_devs.json
-# Outputs the original JSON objects for active developers as JSONL
+# Get the names of active developers as a JSON array
+jaf filter users.jsonl --query '["and", ["eq?", "@status", "active"], ["in?", "dev", "@tags"]]' | \
+  jaf resolve --extract-path "@name" --output-json-array
 ```
 
 ## Full Specification
@@ -285,7 +293,7 @@ print(f"Active Python developers (indices): {list(rs_active_python_devs)}")
 
 # Using the get_matching_objects method (if JRS was from a file source and had metadata)
 # For this example, data is in-memory, so direct indexing is shown above.
-# If rs_active_python_devs was loaded from a file and had filenames_in_collection:
+# If rs_active_python_devs was loaded from a file and had a collection_source:
 # try:
 #   original_objects = rs_active_python_devs.get_matching_objects()
 #   print(f"Original objects for active Python devs: {original_objects}")

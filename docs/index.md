@@ -84,11 +84,14 @@ This "any match is sufficient" behavior (existential quantification) is intuitiv
 
 ## Available Operators
 
-Refer to the [Full Specification](specification.md#operator-categories) for a detailed list of operators.
+Refer to the [Full Specification](specification.md#operator-categories) for a detailed list of operators. The library now includes type-checking predicates (`is-string?`, etc.), additional transformers (`first`, `unique`, etc.), the `self` operator, and variadic arithmetic operators.
 
 ## Command-Line Interface (CLI)
 
-`jaf` provides a CLI for filtering data and performing operations on result sets. See the [CLI Reference](cli_reference.md) for details.
+`jaf` provides a CLI for filtering data and performing operations on result sets. See the [CLI Reference](cli_reference.md) for details. Key features include:
+- `jaf filter`: The primary filtering command.
+- `jaf <and|or|...>`: Perform boolean algebra on result sets. Can now take a `--query` argument for the second operand.
+- `jaf resolve`: Resolve results back to data, with powerful output options like `--extract-path` and `--output-json-array`.
 
 ## Full Specification
 

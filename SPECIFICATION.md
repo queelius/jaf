@@ -1,4 +1,4 @@
-# JAF (JSON Array Filter) - Specification v1.2
+# JAF (JSON Array Filter) - Specification v1.3
 
 ## Overview
 
@@ -18,9 +18,9 @@ JAF is a simple, focused domain-specific language for filtering JSON arrays. It'
 
 ## `JafResultSet` Object
 
-A `JafResultSet` represents the set of indices from a data collection that satisfy a JAF query, along with metadata to ensure logical consistency when combining results or resolving them back to original data.
+A `JafResultSet` is a JSON-serializable object that represents the outcome of a `jaf` filter operation.
 
-**Attributes / JSON Structure:**
+**Core Attributes:**
 
 When serialized to JSON (e.g., by the CLI), a `JafResultSet` has the following structure:
 
@@ -30,11 +30,12 @@ When serialized to JSON (e.g., by the CLI), a `JafResultSet` has the following s
     -   The total number of items in the original data collection from which the indices were derived. This is crucial for operations like `NOT`.
 -   `collection_id`: `Any` (string, number, null, etc.)
     -   An optional identifier for the original data collection. This helps ensure that boolean operations are performed between result sets derived from the same logical collection. It can be a file path, directory path, or a user-defined ID.
--   `collection_source`: `Object` (optional)
-    -   A dictionary describing the source of the data collection, used by `jaf resolve` to retrieve original objects. The structure depends on the source type.
-    -   **For directories:** `{"type": "directory", "path": "/abs/path/to/dir", "files": ["/abs/path/to/dir/a.json", ...]}`
-    -   **For JSONL files:** `{"type": "jsonl", "path": "/abs/path/to/file.jsonl"}`
-    -   **For JSON array files:** `{"type": "json_array", "path": "/abs/path/to/file.json"}`
+-   `collection_source`: (Optional) A dictionary containing metadata about the original data source, enabling data resolution.
+    -   `{"type": "jsonl", "path": "/path/to/file.jsonl"}`
+    -   `{"type": "json_array", "path": "/path/to/file.json"}`
+    -   `{"type": "directory", "path": "/path/to/dir", "files": ["/path/to/dir/a.json", ...]}`
+    -   `{"type": "buffered_stdin", "format": "jsonl", "content": [...]}`: Used when `stdin` is piped to `jaf filter`. The content is buffered to allow for subsequent resolution in a pipe chain.
+-   `query`: (Optional) The JAF query AST that produced this result set.
 
 **Example JSON Output (compact):**
 ```json
@@ -44,24 +45,11 @@ If `collection_source` is not present or `null`, it's omitted from the JSON.
 
 ## Query Format
 
-Queries use S-expression syntax: `[operator, arg1, arg2, ...]`
-
-**Examples**:
+JAF queries are represented as an Abstract Syntax Tree (AST) using JSON arrays (lists in Python). The first element of the array is a string representing the operator, and the subsequent elements are its arguments.
 
 ```python
-# Traditional path syntax
-["eq?", ["path", [["key", "name"]]], "John"]
-["and", 
-  ["exists?", ["path", [["key", "email"]]]], 
-  ["gt?", ["length", ["path", [["key", "items"]]]], 5]
-]
-
-# With @ special path notation (concise)
-["eq?", "@name", "John"]
-["and", 
-  ["exists?", "@email"], 
-  ["gt?", ["length", "@items"], 5]
-]
+# Example: Find objects where the "status" field is "active"
+["eq?", ["path", [["key", "status"]]], "active"]
 ```
 
 ## @ Special Path Notation
@@ -91,33 +79,11 @@ All three forms are functionally equivalent to the traditional `["path", ...]` s
 "@user.name"                                    # Concise string format
 ["@", "user.name"]                              # Explicit with string
 ["@", [["key", "user"], ["key", "name"]]]       # Explicit with AST
-["path", "user.name"]                           # Traditional with string
+["path", "user.name"]                           # Traditional syntax
 ["path", [["key", "user"], ["key", "name"]]]    # Traditional with AST
 ```
 
-**Usage in Queries:**
-
-```python
-# Simple equality with @ syntax
-["eq?", "@status", "active"]
-
-# Complex conditions
-["and", 
-  ["eq?", "@user.status", "active"],
-  ["in?", "dev", "@user.tags"],
-  ["gt?", "@user.score", 100]]
-
-# Existence checks
-["exists?", "@user.profile.settings"]
-
-# With wildcards and advanced path features
-["eq?", "@projects.*.status", "completed"]
-["gt?", "@items[0].price", 50]
-["exists?", "@logs.*.error"]
-```
-
-**Benefits:**
-
+**Motivation:**
 - **Conciseness**: `"@user.name"` vs `["path", "user.name"]`
 - **Readability**: Reduces visual clutter in complex queries
 - **Familiarity**: `@` is commonly used for references in many languages
@@ -187,19 +153,15 @@ Each component in the `path_components_list` is a list itself, where the first e
 9.  `["root"]`
     *   Represents the root of the object against which the entire path expression is being evaluated.
     *   Allows paths to "restart" or reference from the top-level object, even if the current evaluation context is nested due to prior path components.
-    *   Example: `[["key", "user"], ["root"], ["key", "config"]]` - if `obj` is `{"user": {"name": "A"}, "config": {"setting": "X"}}`, this path would first go to `obj["user"]`, then `["root"]` would reset the context to `obj`, and `["key", "config"]` would access `obj["config"]`.
+    *   Example: `[["key", "user"], ["root"], ["key", "config"]]` would first navigate to `user`, then jump back to the root to access `config`.
 
-**Path Evaluation (`eval_path` function):**
+**Path Evaluation Return Values:**
 
-The `eval_path(obj, path_components_list)` function (internally used by both the `["path", ...]` special form and `@` notation) evaluates the given path against the `obj`.
-
-- **Return Value**:
-    - If the path does not contain multi-match components (i.e., only uses `["key", ...]` or `["index", ...]`) and successfully resolves to a single, definite value, that value is returned directly. This includes `None` if the field exists and its value is `null`.
-    - If the path involves components that can naturally yield multiple values (e.g., `["indices", ...]`, `["slice", ...]`, `["regex_key", ...]`, `["wc_level"]`, `["wc_recursive"]`), `eval_path` returns a `PathValues` object. `PathValues` is a specialized list subclass that holds the collection of all values found by the path. It preserves the order of discovery and can contain duplicates if the data and path logic lead to them. It offers convenience methods for accessing its contents (e.g., `first()`, `one()`).
-    - If a path that does *not* contain multi-match components fails to resolve at any point (e.g., a key not found, an index out of bounds for a specific index access), `eval_path` returns an empty list `[]`. This signifies "not found" or "no value" for a specific path.
-    - If a path *with* multi-match components finds no values, it returns an empty `PathValues` object (e.g., `PathValues([])`). This is distinct from the `[]` returned for a specific path not found.
-    - If the `path_components_list` is empty (e.g., `["path", []]` or `["@", ""]`), `eval_path` returns the original `obj`.
-    - In rare cases where a path *without* multi-match components unexpectedly yields multiple distinct results, `eval_path` may also wrap these results in a `PathValues` object with a warning.
+-   If the path involves components that can naturally yield multiple values (e.g., `["indices", ...]`, `["slice", ...]`, `["regex_key", ...]`, `["wc_level"]`, `["wc_recursive"]`), `eval_path` returns a `PathValues` object. `PathValues` is a specialized list subclass that holds the collection of all values found by the path. It preserves the order of discovery and can contain duplicates if the data and path logic lead to them. It offers convenience methods for accessing its contents (e.g., `first()`, `one()`).
+-   If a path that does *not* contain multi-match components fails to resolve at any point (e.g., a key not found, an index out of bounds for a specific index access), `eval_path` returns an empty list `[]`. This signifies "not found" or "no value" for a specific path.
+-   If a path *with* multi-match components finds no values, it returns an empty `PathValues` object (e.g., `PathValues([])`). This is distinct from the `[]` returned for a specific path not found.
+-   If the `path_components_list` is empty (e.g., `["path", []]` or `["@", ""]`), `eval_path` returns the original `obj`.
+-   In rare cases where a path *without* multi-match components unexpectedly yields multiple distinct results, `eval_path` may also wrap these results in a `PathValues` object with a warning.
 
 **Examples of Path Syntax:**
 
@@ -243,8 +205,7 @@ The `eval_path(obj, path_components_list)` function (internally used by both the
 - `path` - Extract values: `["path", [["key", "field"], ["key", "subfield"]]]`
 - `@` - Concise path notation: `"@field.subfield"` or `["@", path_expr]`
 - `exists?` - Check existence: `["exists?", path_expr]`
-  - `exists?` returns `true` if `eval_path` for the given path expression returns anything other than an empty list `[]` (when the path is specific and not found) or an empty `PathValues` (when the path is multi-match and not found). A path to a `null` value *does* exist and `exists?` will return `true`.
-  - Works with both traditional and `@` syntax: `["exists?", ["path", "user.email"]]` or `["exists?", "@user.email"]`
+- `self` - Reference the current root object: `["self"]`
 - `if` - Conditional: `["if", condition, true-expr, false-expr]`
 - `and` - Logical AND with short-circuit: `["and", expr1, expr2, ...]`
 - `or` - Logical OR with short-circuit: `["or", expr1, expr2, ...]`
@@ -256,21 +217,30 @@ The `eval_path(obj, path_components_list)` function (internally used by both the
 # Comparison
 "eq?", "neq?", "gt?", "gte?", "lt?", "lte?"
 
-# Containment  
-"in?"
+# Containment / Membership
+"in?", "contains?"
 
 # String matching
 "starts-with?", "ends-with?", "regex-match?", "close-match?", "partial-match?"
+
+# Type checking
+"is-string?", "is-number?", "is-list?", "is-dict?", "is-null?", "is-empty?"
 ```
 
 ### 3. Value Extractors (Support Predicates)
 
 ```python
 # Data access
-"length", "type", "keys"
+"length", "type", "keys", "first", "last", "unique"
 
-# String transformation  
-"lower-case", "upper-case"
+# String transformation
+"lower-case", "upper-case", "split", "join"
+
+# Arithmetic (variadic)
+"+", "-", "*", "/"
+
+# Arithmetic (binary)
+"%"
 
 # Date/time
 "now", "date", "datetime", "date-diff", "days", "seconds"
@@ -278,45 +248,46 @@ The `eval_path(obj, path_components_list)` function (internally used by both the
 
 ## Function Signatures
 
-All functions follow this pattern:
+This section provides a brief overview of the function signatures. For detailed behavior, especially with `PathValues`, see the Evaluation Rules.
 
+**Example Signatures:**
 ```python
-[function-name, arg1, arg2, ...]
-```
-
-**Examples**:
-
-```python
-# Traditional syntax:
-["eq?", ["path", [["key", "name"]]], "John"]                    # name == "John"
-["gt?", ["length", ["path", [["key", "items"]]]], 5]            # len(items) > 5  
-["starts-with?", ["lower-case", ["path", [["key", "email"]]]], "admin"]  # email.lower().startswith("admin")
-
-# With @ syntax (more concise):
-["eq?", "@name", "John"]                                        # name == "John"
-["gt?", ["length", "@items"], 5]                                # len(items) > 5
+["eq?", value1, value2]                                         # value1 == value2
+["gt?", value1, value2]                                         # value1 > value2
+["in?", item, container]                                        # item in container
 ["starts-with?", ["lower-case", "@email"], "admin"]             # email.lower().startswith("admin")
 ```
+
+**New Function Signatures:**
+- `["self"]`: Returns the entire root object being evaluated.
+- `["contains?", container, item]`: Returns true if `container` (a list or string) contains `item`.
+- `["is-string?", value]`, `["is-number?", value]`, etc.: Type-checking predicates.
+- `["is-empty?", value]`: Returns true if a list, string, or dict is empty, or if the value is `None`.
+- `["first", list]`, `["last", list]`: Return the first or last element of a list.
+- `["unique", list]`: Returns a new list with duplicates removed while preserving order.
+- `["split", string, delimiter]`, `["join", list, delimiter]`: String manipulation.
+- `["+", num1, num2, ...]`: Variadic addition. `(+)` is 0, `(+ a)` is `a`.
+- `["*", num1, num2, ...]`: Variadic multiplication. `(*)` is 1, `(* a)` is `a`.
+- `["-", num1, num2, ...]`: Variadic subtraction. `(-)` is 0, `(- a)` is `-a`, `(- a b)` is `a-b`.
+- `["/", num1, num2, ...]`: Variadic division. `(/)` is an error, `(/ a)` is `1/a`, `(/ a b)` is `a/b`.
 
 ## Evaluation Rules
 
 ### 1. Literals
-
-- Strings, numbers, booleans, null are returned as-is.
-- `"hello"` → `"hello"`
-- `42` → `42`
-- `null` → `None` (in Python representation)
+- Numbers, strings, booleans, and `null` evaluate to themselves.
 
 ### 2. Special Forms
-
-- Evaluated with custom logic (don't evaluate all args first).
-- Handle control flow and path access.
-- Both `path` and `@` are special forms that handle path evaluation.
+- Special forms have custom evaluation logic and do not necessarily evaluate all their arguments.
+- `if`: Evaluates `condition`, then either `true-expr` or `false-expr`.
+- `and`/`or`: Evaluate arguments from left to right with short-circuiting.
+- `not`: Evaluates its single argument and returns its boolean negation.
+- `path`/`@`: Evaluate the path expression against the current object.
+- `exists?`: Evaluates the path expression and returns `true` if it resolves to a value (including `null`), `false` otherwise.
+- `self`: Returns the current root object without evaluating any arguments.
 
 ### 3. Regular Functions (Predicates and Value Extractors)
-
-- All arguments evaluated first, then function called.
-- Predictable evaluation order.
+- All arguments are evaluated first.
+- The results are passed to the function's implementation.
 
 ### 4. `PathValues` in Predicates and Functions (Interaction with `adapt_jaf_operator`)
 
@@ -351,7 +322,7 @@ When a `PathValues` object (the result of a path expression involving components
 **d. Universal Quantification (`∀`) and `path`:**
 
 - The `path` operator (and `@` notation) itself is designed for *data extraction* – it gathers all values that match a given path. It does not inherently perform universal quantification ("for all").
-- Universal quantification is a *checking* operation. While not directly supported by `path`, such checks can often be constructed using negation and existential quantification (e.g., "it is NOT true that there EXISTS an item that does NOT satisfy the condition"). For example, to check if all items in a list have `status == "active"`: `["not", ["in?", false, ["map", ["lambda", "x", ["eq?", ["path", [["key", "x"], ["key", "status"]]], "active"]], ["path", [["key", "items"]]]]]]` (assuming a hypothetical `map` and `lambda` for illustration; JAF does not have these directly but similar logic can be built with `and`/`or` over known items or by checking for the non-existence of a counter-example). A simpler approach for "all items satisfy X" is often "NOT (EXISTS item that does NOT satisfy X)".
+- Universal quantification is a *checking* operation. While not directly supported by `path`, such checks can often be constructed using negation and existential quantification (e.g., "it is NOT true that there EXISTS an item that does NOT satisfy the condition"). For example, to check if all items in a list have `status == "active"`: `["not", ["in?", false, ["map", ["lambda", "x", ["eq?", ["path", [["key", "x"], ["key", "status"]]], "active"]], ["path", [["key", "items"]]]]]]` (assuming a hypothetical `map` and `lambda` for illustration; JAF does not have these directly but similar logic can be built with `and`/`or` over known items or by checking for the non-existence of a counter-example). A simpler approach for "all items satisfy X" is often "NOT (EXISTS an item that does NOT satisfy X)".
 
 ## Boolean Algebra on Result Sets
 
@@ -371,17 +342,17 @@ Each method returns a *new* `JafResultSet` instance.
     *   Performs a set intersection of `self.indices` and `other.indices`.
     *   Requires compatibility (see below).
     *   The resulting `collection_id` is `self.collection_id` if not None, else `other.collection_id`.
-    *   The resulting `filenames_in_collection` is `self.filenames_in_collection` if not None, else `other.filenames_in_collection`.
+    *   The resulting `collection_source` is `self.collection_source` if not None, else `other.collection_source`.
 
 2.  `OR(self, other: 'JafResultSet') -> 'JafResultSet'` (or `self | other`)
     *   Performs a set union of `self.indices` and `other.indices`.
     *   Requires compatibility.
-    *   Metadata propagation for `collection_id` and `filenames_in_collection` is the same as `AND`.
+    *   Metadata propagation for `collection_id` and `collection_source` is the same as `AND`.
 
 3.  `NOT(self) -> 'JafResultSet'` (or `~self`)
     *   Calculates the complement relative to `self.collection_size`.
     *   `new_indices = {0, ..., self.collection_size - 1} - self.indices`.
-    *   Preserves `self.collection_id` and `self.filenames_in_collection`.
+    *   Preserves `self.collection_id` and `self.collection_source`.
 
 4.  `XOR(self, other: 'JafResultSet') -> 'JafResultSet'` (or `self ^ other`)
     *   Performs a set symmetric difference.
@@ -398,18 +369,19 @@ Before performing binary operations (AND, OR, XOR, SUBTRACT), `JafResultSet` ins
 -   `collection_size` must be identical.
 -   If both `collection_id`s are not None, they must be identical.
 -   If these conditions are not met, a `JafResultSetError` is raised.
--   Differences in `filenames_in_collection` between two compatible result sets do not raise an error but may result in the output `JafResultSet` inheriting this attribute from one of the operands (typically `self`).
+-   Differences in `collection_source` between two compatible result sets do not raise an error but may result in the output `JafResultSet` inheriting this attribute from one of the operands (typically `self`).
 
 ## Resolving Result Sets to Original Data
 
 The `JafResultSet` class provides a method to retrieve the original data objects corresponding to its `indices`.
 
 **`get_matching_objects(self) -> List[Any]`:**
--   Attempts to load the original data objects.
+-   Attempts to load the original data objects by using the `collection_source` metadata.
 -   **Data Source Determination**:
-    1.  If `self.filenames_in_collection` (a list of file paths) is present, these files are loaded in their sorted order to reconstruct the original collection.
-    2.  Else, if `self.collection_id` is a string representing a path to a single existing file, that file is loaded.
-    3.  If neither of the above provides a loadable source, a `JafResultSetError` is raised.
+    1.  The method inspects the `collection_source` dictionary.
+    2.  It uses a `CollectionLoader` to find a registered loader function that matches the `type` key in `collection_source` (e.g., "jsonl", "directory", "buffered_stdin").
+    3.  The appropriate loader is invoked with the `collection_source` dictionary to retrieve the full list of original objects.
+    4.  If `collection_source` is missing or no suitable loader is found, a `JafResultSetError` is raised.
 -   **Validation**: After loading, it verifies that the total number of loaded objects matches `self.collection_size`. If not, a `JafResultSetError` is raised.
 -   **Return**: A list containing the original data objects at the indices specified in `self.indices`. The objects are returned in the order of the sorted indices.
 -   **Errors**: Raises `JafResultSetError` for issues like unresolvable data sources, file not found, or data inconsistencies.
@@ -442,34 +414,27 @@ The `JafResultSet` class provides a method to retrieve the original data objects
 ## Example Queries
 
 ### Basic Filtering
-
 ```python
-# Traditional syntax:
-["eq?", ["path", [["key", "name"]]], "John"]
-["gt?", ["length", ["path", [["key", "items"]]]], 5]
+# Find all objects where the "active" field is true
+["eq?", "@active", true]
 
-# With @ syntax (more concise):
-["eq?", "@name", "John"]
-["gt?", ["length", "@items"], 5]
+# Find all objects where the "type" is "admin"
+["eq?", "@type", "admin"]
 ```
 
 ### Complex Conditions
-
 ```python
-# Traditional syntax:
-["and", 
-  ["eq?", ["path", [["key", "active"]]], true],
-  ["exists?", ["path", [["key", "email"]]]]
-]
-
-# With @ syntax:
-["and", 
+# Find all objects where "active" is true AND "score" is greater than 90
+["and",
   ["eq?", "@active", true],
-  ["exists?", "@email"]
+  ["gt?", "@score", 90]
 ]
 
-# Case-insensitive language check with @ syntax:
-["eq?", ["lower-case", "@language"], "python"]
+# Find all objects where "type" is "guest" OR "status" is "pending"
+["or",
+  ["eq?", "@type", "guest"],
+  ["eq?", "@status", "pending"]
+]
 ```
 
 ### Path System Examples
@@ -490,17 +455,7 @@ The `JafResultSet` class provides a method to retrieve the original data objects
 "@users[0,2].name"  # @ syntax
 
 # Check if any log entry with a key matching "event_.*" has a "level" of "critical"
-["eq?", ["path", [["regex_key", "event_.*"], ["key", "level"]]], "critical"]
-
-# Check if the first three tags include "urgent"
-["in?", "urgent", ["path", [["key", "tags"], ["slice", null, 3, null]]]]
-["in?", "urgent", "@tags[:3]"]  # @ syntax
-
-# Mixed usage - both syntaxes in same query:
-["and",
-  ["eq?", "@status", "active"],                    # @ syntax
-  ["gt?", ["length", ["path", [["key", "items"]]]], 0]  # traditional syntax
-]
+["eq?", ["path", [["key", "logs"], ["regex_key", "event_.*"], ["key", "level"]]], "critical"]
 ```
 
 ### Advanced @ Syntax Examples
@@ -537,4 +492,4 @@ The `JafResultSet` class provides a method to retrieve the original data objects
 5. **Boolean Results for Filtering**: Top-level queries (or conditions in `if`, `and`, `or`) must resolve to boolean values for filtering.
 6. **Syntax Coexistence**: The `@` notation coexists with traditional `["path", ...]` syntax, maintaining full backward compatibility.
 
-This specification defines a minimal, focused JSON filtering language that's powerful enough for real-world use cases while remaining simple and predictable. The path system, with its tagged AST and concise `@` notation, enhances both explicitness and readability. The `JafResultSet` provides a robust mechanism for working with and combining filter results.
+This specification defines a minimal, focused JSON filtering language that's powerful enough for real-world use cases while remaining simple and predictable. The path system, with its tagged AST and concise `@` notation, enhances both explicitness and readability. The `JafResultSet` provides a robust mechanism for working with and combining filter

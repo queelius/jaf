@@ -48,7 +48,13 @@ jaf filter logs.jsonl --query '["exists?", ["path", [["key", "error"]]]]' --coll
 
 ## Result Set Operations (Boolean Algebra)
 
-These commands perform boolean algebra on `JafResultSet` instances. Inputs are typically `JafResultSet` JSON provided via file paths or `stdin` (`-`). The output is always a new `JafResultSet` JSON to `stdout`.
+These commands perform boolean algebra on `JafResultSet` instances. The output is always a new `JafResultSet` JSON to `stdout`.
+
+**Operand Types:**
+- **First Operand**: A `JafResultSet` provided via a file path or from `stdin` (`-`).
+- **Second Operand (for binary ops)**: Can be either:
+    1. A second `JafResultSet` from a file path.
+    2. A JAF query string provided via the `--query` option. This query is executed against the data source of the first `JafResultSet`.
 
 **General Input Handling:**
 
@@ -66,15 +72,26 @@ It's an error to try to read both inputs from `stdin` for a binary operation.
 
 ### `jaf and`
 
-Performs a logical AND (intersection) on two `JafResultSet`s.
+Performs a logical AND (intersection).
 
-**Usage:** `jaf and [rs1_path_or_-] [rs2_path_or_-]`
+**Usage:**
+```bash
+# With two JafResultSet inputs
+jaf and [rs1_path_or_-] [rs2_path_or_-]
+
+# With one JafResultSet and one on-the-fly query
+jaf and [rs1_path_or_-] --query '<query_ast_json_string>'
+```
 
 ### `jaf or`
 
-Performs a logical OR (union) on two `JafResultSet`s.
+Performs a logical OR (union).
 
-**Usage:** `jaf or [rs1_path_or_-] [rs2_path_or_-]`
+**Usage:**
+```bash
+jaf or [rs1_path_or_-] [rs2_path_or_-]
+jaf or [rs1_path_or_-] --query '<query_ast_json_string>'
+```
 
 ### `jaf not`
 
@@ -84,15 +101,23 @@ Performs a logical NOT (complement) on a `JafResultSet`.
 
 ### `jaf xor`
 
-Performs a logical XOR (symmetric difference) on two `JafResultSet`s.
+Performs a logical XOR (symmetric difference).
 
-**Usage:** `jaf xor [rs1_path_or_-] [rs2_path_or_-]`
+**Usage:**
+```bash
+jaf xor [rs1_path_or_-] [rs2_path_or_-]
+jaf xor [rs1_path_or_-] --query '<query_ast_json_string>'
+```
 
 ### `jaf difference`
 
-Performs a logical set difference (`rs1 - rs2`) on two `JafResultSet`s.
+Performs a logical set difference (`rs1 - rs2`).
 
-**Usage:** `jaf difference [rs1_path_or_-] [rs2_path_or_-]`
+**Usage:**
+```bash
+jaf difference [rs1_path_or_-] [rs2_path_or_-]
+jaf difference [rs1_path_or_-] --query '<query_ast_json_string>'
+```
 
 **Boolean Operation Examples:**
 
@@ -112,6 +137,9 @@ jaf not active.jrs
 
 # Users who are active but NOT developers
 jaf difference active.jrs devs.jrs
+
+# Users who are active but NOT developers (using --query)
+jaf filter users.jsonl --query '["eq?", "@status", "active"]' | jaf difference --query '["in?","dev","@tags"]'
 
 # Using stdin for the first input
 cat active.jrs | jaf and - devs.jrs
@@ -159,7 +187,7 @@ jaf and active.jrs devs.jrs | jaf resolve
 jaf resolve active_devs.jrs --extract-path '@user.id'
 
 # Apply a query to transform the results
-jaf resolve active_devs.jrs --apply-query '["pick", ["path", [["key", "name"], ["key", "email"]]]]'
+jaf resolve active_devs.jrs --apply-query '["+", "@score", 5]'
 
 # Output as a JSON array
 jaf resolve active_devs.jrs --output-json-array
