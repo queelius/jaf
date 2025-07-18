@@ -7,15 +7,9 @@ from typing import List, Dict, Any
 
 # Assuming your project structure allows this import:
 # If jaf is a package, and console_script is a module within it.
-from jaf.console_script import (
-    walk_data_files,
-    load_objects_from_file,
-    main,
-    load_jaf_result_set_from_input,
-)
+from jaf.console_script import main
 from jaf.io_utils import walk_data_files, load_objects_from_file
-from jaf.result_set import JafQuerySet  # For type hints and potentially mocking
-from jaf.jaf import jafError  # For exception checking
+from jaf.exceptions import JAFError
 
 
 # Helper to create dummy files
@@ -159,7 +153,8 @@ class TestLoadObjectsFromFile:
         assert load_objects_from_file(str(file_path)) == ["just a JSON string value"]
 
 
-class TestLoadJafQuerySetFromInput:
+# TestLoadJafQuerySetFromInput removed - obsolete after streaming migration
+# class TestLoadJafQuerySetFromInput:
     def test_load_from_valid_file(self, tmp_path):
         file_path = tmp_path / "rs.json"
         rs_data = {

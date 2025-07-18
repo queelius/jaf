@@ -1,16 +1,18 @@
-from .jaf import jaf, jafError
+from .lazy_streams import stream, LazyDataStream, FilteredStream, MappedStream
 from .jaf_eval import jaf_eval
 from .path_evaluation import eval_path, exists
 from .path_types import PathValues
 from .path_exceptions import PathSyntaxError
 from .path_conversion import path_ast_to_string, string_to_path_ast
-from .result_set import JafQuerySet, JafQuerySetError
+from .exceptions import JAFError
 
-__version__ = "0.5.2"
+__version__ = "0.6.0"
 
 __all__ = [
-    "jaf",
-    "jafError",
+    "stream",
+    "LazyDataStream",
+    "FilteredStream",
+    "MappedStream",
     "jaf_eval",
     "path_ast_to_string",
     "string_to_path_ast",
@@ -18,7 +20,5 @@ __all__ = [
     "PathSyntaxError",
     "exists",
     "PathValues",
-    "JafQuerySet",
-    "JafQuerySetError",
-    "CollectionLoader",
+    "JAFError",
 ]

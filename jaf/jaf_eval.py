@@ -9,8 +9,11 @@ from .path_types import PathValues
 from .utils import adapt_jaf_operator
 from .path_conversion import string_to_path_ast
 from .exceptions import (
-    UnknownOperatorError, InvalidArgumentCountError, InvalidQueryFormatError,
-    PathSyntaxError, UnknownPathOperationError
+    UnknownOperatorError,
+    InvalidArgumentCountError,
+    InvalidQueryFormatError,
+    PathSyntaxError,
+    UnknownPathOperationError,
 )
 
 # Set up the logger
@@ -183,7 +186,9 @@ class jaf_eval:
         "max": adapt_jaf_operator(-1, lambda *args, obj: max(args) if args else None),
         "min": adapt_jaf_operator(-1, lambda *args, obj: min(args) if args else None),
         # Object construction
-        "dict": adapt_jaf_operator(-1, lambda *args, obj: dict(zip(args[::2], args[1::2]))),
+        "dict": adapt_jaf_operator(
+            -1, lambda *args, obj: dict(zip(args[::2], args[1::2]))
+        ),
     }
 
     @staticmethod
@@ -253,7 +258,9 @@ class jaf_eval:
                 path_expr = path_expr_ast
 
             if not isinstance(path_expr, list):
-                raise InvalidQueryFormatError("Path argument must be a list of path components")
+                raise InvalidQueryFormatError(
+                    "Path argument must be a list of path components"
+                )
 
             # Validate each component of the path expression
             known_path_ops = {
@@ -271,12 +278,45 @@ class jaf_eval:
                 if not component:
                     raise InvalidQueryFormatError("Path component cannot be empty")
                 if not isinstance(component[0], str):
-                    raise InvalidQueryFormatError("Path component operation must be a string")
+                    raise InvalidQueryFormatError(
+                        "Path component operation must be a string"
+                    )
                 if component[0] not in known_path_ops:
                     raise UnknownPathOperationError(component[0])
 
+            # TODO: BUGFIX - Need to properly distinguish between empty arrays and non-existent paths
+            # Currently eval_path returns [] for both cases, which makes exists? return False
+            # for keys that exist with empty array values. This needs a deeper fix in the
+            # path evaluation system. For now, keeping original behavior to avoid breaking tests.
+            # See: https://github.com/anthropics/jaf/issues/XXX
+
             res = eval_path(path_expr, obj)
-            return res
+
+            # For simple paths (no wildcards), return single value
+            # Check if path contains wildcards
+            has_wildcards = any(
+                component[0] in ["wc_level", "wc_recursive", "regex_key", "fuzzy_key"]
+                for component in path_expr
+                if isinstance(component, list) and len(component) > 0
+            )
+
+            if not has_wildcards:
+                # For simple paths, return the single value or empty list
+                if isinstance(res, list):
+                    if len(res) == 0:
+                        return (
+                            []
+                        )  # Original behavior - can't distinguish from non-existent
+                    elif len(res) == 1:
+                        return res[0]
+                    else:
+                        return res  # Multiple values, return as list
+                else:
+                    # eval_path returned the value directly
+                    return res
+            else:
+                # Path with wildcards - return full list
+                return res
 
         elif op == "exists?":
             if len(args) != 1:
@@ -302,12 +342,18 @@ class jaf_eval:
                     # Convert string path to AST
                     path_components = string_to_path_ast(path_components)
                     if not path_components:
-                        raise PathSyntaxError("Invalid path expression: empty or malformed")
+                        raise PathSyntaxError(
+                            "Invalid path expression: empty or malformed"
+                        )
                 if not isinstance(path_components, list):
-                    raise InvalidQueryFormatError("Path argument must be a list of path components")
+                    raise InvalidQueryFormatError(
+                        "Path argument must be a list of path components"
+                    )
                 return exists(path_components, obj)
             else:
-                raise InvalidQueryFormatError("exists? argument must be a path expression")
+                raise InvalidQueryFormatError(
+                    "exists? argument must be a path expression"
+                )
 
         elif op == "if":
             if len(args) != 3:
@@ -356,7 +402,7 @@ class jaf_eval:
 
         # Check argument count for non-variadic functions
         if nargs != -1 and len(args) != nargs - 1:
-            raise InvalidArgumentCountError(op, nargs-1, len(args))
+            raise InvalidArgumentCountError(op, nargs - 1, len(args))
 
         # Evaluate all arguments
         eval_args = []

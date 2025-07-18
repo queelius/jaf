@@ -5,8 +5,7 @@ Tests core filtering functionality using the stream API.
 
 import pytest
 from jaf.lazy_streams import stream, FilteredStream
-from jaf.jaf import jafError
-from jaf.result_set import JafQuerySet, JafQuerySetError  # For compatibility during migration
+from jaf.exceptions import JAFError
 
 
 class TestJAFCore:
@@ -89,7 +88,7 @@ class TestJAFCore:
     def test_invalid_query_raises_error(self):
         """Test that invalid queries raise appropriate errors"""
         from jaf.exceptions import UnknownOperatorError
-        
+
         # With lazy evaluation, invalid queries are only detected during evaluation
         query = ["unknown-operator", "arg"]
         s = stream({"type": "memory", "data": self.test_data})
@@ -110,7 +109,7 @@ class TestJAFCore:
         """Test that empty query raises error"""
         # With streams, we need to test at filter time
         s = stream({"type": "memory", "data": self.test_data})
-        
+
         # Empty string or None queries should be caught
         # Note: The actual error handling may differ in the stream implementation
 

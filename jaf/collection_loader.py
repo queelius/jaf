@@ -3,13 +3,13 @@ Provides a flexible data loading system for JAF collections.
 
 This module introduces the "CollectionLoader," a class that implements a
 strategy pattern for loading collections of JSON documents. The core motivation
-is to decouple the `JafResultSet`, which is a pure data container representing
+is to decouple the lazy streams, which are pure data containers representing
 filter results, from the implementation details of how and where the original
 data is stored.
 
 By using a loader, JAF can be easily extended to support new data sources
 (e.g., databases, web APIs, different file formats) without modifying the core
-filtering or result set logic. A `JafResultSet` only needs to store a serializable
+filtering or stream logic. A stream only needs to store a serializable
 `collection_source` dictionary, and the `CollectionLoader` uses this metadata
 to dispatch to the correct loading function at runtime.
 
@@ -47,9 +47,8 @@ class CollectionLoader:
 
     This class acts as a registry for different data loading strategies. It maps
     a `source_type` string (e.g., "jsonl", "directory") to a specific function
-    that knows how to handle that source. The `get_matching_objects` method of
-    a `JafResultSet` will delegate the task of data retrieval to an instance
-    of this class.
+    that knows how to handle that source. The streaming system will delegate
+    the task of data retrieval to an instance of this class.
     """
 
     def __init__(self):
@@ -70,7 +69,7 @@ class CollectionLoader:
         loader function.
 
         Args:
-            collection_source: The source metadata dictionary from a JafResultSet.
+            collection_source: The source metadata dictionary from a stream.
 
         Returns:
             A list of documents from the specified source.

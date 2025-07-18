@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jaf"
-version = "0.5.2"
-description = "JSON Array Filter (jaf) is a versatile filter for JSON arrays. It is a domain-specific language (DSL) that allows you to filter JSON arrays using a simple, yet powerful syntax. Programmatically, the AST can be used to filter JSON arrays in a more flexible way."
+version = "0.6.0"
+description = "JAF (Just Another Flow) - A streaming data processing system for JSON with lazy evaluation, composable operations, and a fluent API"
 authors = [
     { name = "Alex Towell", email = "lex@metafunctor.com" }
 ]
 readme = "README.md"
 license = { text = "MIT License" }
-keywords = ["filter", "JSON", "AST", "DSL", "parser", "array"]
+keywords = ["streaming", "JSON", "JSONL", "lazy-evaluation", "fluent-api", "data-processing", "pipeline", "flow"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",

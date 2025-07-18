@@ -5,9 +5,7 @@ These tests ensure the lazy evaluation system works correctly and covers edge ca
 
 import pytest
 from jaf.lazy_streams import stream, FilteredStream
-from jaf.jaf import jafError
-from jaf.exceptions import UnknownOperatorError, InvalidArgumentCountError
-from jaf.result_set import JafQuerySet, JafQuerySetError  # For compatibility during migration
+from jaf.exceptions import JAFError, UnknownOperatorError, InvalidArgumentCountError
 
 
 class TestLazyEvaluation:

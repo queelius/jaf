@@ -170,6 +170,11 @@ def exists(path_components_list: List[List[Any]], obj: Any) -> bool:
     This function determines whether a path exists in the data, including
     paths that resolve to None/null values.
 
+    TODO: BUGFIX - This function currently returns False for keys that exist
+    with empty array values because eval_path returns [] for both non-existent
+    paths and paths pointing to empty arrays. Need to modify eval_path to
+    distinguish between these cases (e.g., return None for non-existent paths).
+
     Args:
         path_components_list: List of path components in AST format
         obj: The object to check the path against

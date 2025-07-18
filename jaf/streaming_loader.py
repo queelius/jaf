@@ -86,10 +86,12 @@ class StreamingLoader:
 
         # Register codata loaders
         from .codata_loaders import register_codata_loaders
+
         register_codata_loaders(self)
-        
+
         # Register lazy operation loaders
         from .lazy_ops_loader import register_lazy_ops_loaders
+
         register_lazy_ops_loaders(self)
 
 

@@ -396,7 +396,7 @@ def stream_distribution(
 ) -> Generator[Any, None, None]:
     """
     Stream numbers from various probability distributions.
-    
+
     Args:
         source: Dict with:
             - distribution: Name of distribution (uniform, normal, exponential, poisson, etc.)
@@ -404,7 +404,7 @@ def stream_distribution(
             - limit: Optional limit on number of values
             - as_object: If True, yield {"value": x, "index": i}, else just x (default: True)
             - parameters: Distribution-specific parameters
-            
+
     Supported distributions:
         - uniform: min, max (default: 0, 1)
         - normal/gaussian: mean, std (default: 0, 1)
@@ -417,7 +417,7 @@ def stream_distribution(
         - chi2: df (degrees of freedom) (default: 1)
         - pareto: alpha/shape (default: 1.0)
         - weibull: shape, scale (default: 1.0, 1.0)
-        
+
     Example:
         {
             "type": "distribution",
@@ -432,27 +432,28 @@ def stream_distribution(
     limit = source.get("limit")
     as_object = source.get("as_object", True)
     params = source.get("parameters", {})
-    
+
     rng = random.Random(seed)
     count = 0
-    
+
     # Distribution generators
     if dist_name in ["uniform", "unif"]:
         min_val = params.get("min", 0)
         max_val = params.get("max", 1)
         generator = lambda: rng.uniform(min_val, max_val)
-        
+
     elif dist_name in ["normal", "gaussian", "norm"]:
         mean = params.get("mean", params.get("mu", 0))
         std = params.get("std", params.get("sigma", 1))
         generator = lambda: rng.gauss(mean, std)
-        
+
     elif dist_name in ["exponential", "exp"]:
         rate = params.get("lambda", params.get("rate", 1.0))
         generator = lambda: rng.expovariate(rate)
-        
+
     elif dist_name == "poisson":
         mean = params.get("lambda", params.get("mean", 1.0))
+
         # Simple Poisson using Knuth's algorithm for small lambda
         def poisson():
             L = math.exp(-mean)
@@ -462,49 +463,50 @@ def stream_distribution(
                 k += 1
                 p *= rng.random()
             return k - 1
+
         generator = poisson
-        
+
     elif dist_name == "binomial":
         n = params.get("n", 10)
         p = params.get("p", 0.5)
         generator = lambda: sum(1 for _ in range(n) if rng.random() < p)
-        
+
     elif dist_name == "gamma":
         alpha = params.get("alpha", params.get("shape", 1.0))
         beta = params.get("beta", params.get("scale", 1.0))
         generator = lambda: rng.gammavariate(alpha, beta)
-        
+
     elif dist_name == "beta":
         alpha = params.get("alpha", 1.0)
         beta = params.get("beta", 1.0)
         generator = lambda: rng.betavariate(alpha, beta)
-        
+
     elif dist_name == "lognormal":
         mean = params.get("mean", params.get("mu", 0))
         std = params.get("std", params.get("sigma", 1))
         generator = lambda: rng.lognormvariate(mean, std)
-        
+
     elif dist_name in ["chi2", "chisquare"]:
         df = params.get("df", 1)
         # Chi-square is gamma with alpha=df/2, beta=2
-        generator = lambda: rng.gammavariate(df/2, 2)
-        
+        generator = lambda: rng.gammavariate(df / 2, 2)
+
     elif dist_name == "pareto":
         alpha = params.get("alpha", params.get("shape", 1.0))
         generator = lambda: rng.paretovariate(alpha)
-        
+
     elif dist_name == "weibull":
         shape = params.get("shape", params.get("k", 1.0))
         scale = params.get("scale", params.get("lambda", 1.0))
         generator = lambda: scale * rng.weibullvariate(scale, shape)
-        
+
     else:
         raise ValueError(f"Unknown distribution: {dist_name}")
-    
+
     # Generate values
     while limit is None or count < limit:
         value = generator()
-        
+
         if as_object:
             yield {
                 "index": count,
@@ -513,7 +515,7 @@ def stream_distribution(
             }
         else:
             yield value
-            
+
         count += 1
 
 
@@ -522,7 +524,7 @@ def stream_counter(
 ) -> Generator[Any, None, None]:
     """
     Stream a simple counter/sequence.
-    
+
     Args:
         source: Dict with:
             - start: Starting value (default: 0)
@@ -534,16 +536,16 @@ def stream_counter(
     step = source.get("step", 1)
     limit = source.get("limit")
     as_object = source.get("as_object", False)
-    
+
     current = start
     index = 0
-    
+
     while limit is None or index < limit:
         if as_object:
             yield {"index": index, "value": current}
         else:
             yield current
-        
+
         current += step
         index += 1
 

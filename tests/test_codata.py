@@ -172,7 +172,9 @@ class TestLazyOperations:
 
         result = stream(source)
         # Take while value < 100
-        items = list(result.take_while(["lt?", ["@", [["key", "value"]]], 100]).evaluate())
+        items = list(
+            result.take_while(["lt?", ["@", [["key", "value"]]], 100]).evaluate()
+        )
 
         # Should get 0,1,1,2,3,5,8,13,21,34,55,89
         assert len(items) == 12
@@ -226,11 +228,13 @@ class TestInfiniteStreamFiltering:
 
         # Find active users with high scores
         s = stream(source)
-        filtered = s.filter([
-            "and",
-            ["eq?", ["@", [["key", "status"]]], "active"],
-            ["gt?", ["@", [["key", "score"]]], 75],
-        ])
+        filtered = s.filter(
+            [
+                "and",
+                ["eq?", ["@", [["key", "status"]]], "active"],
+                ["gt?", ["@", [["key", "score"]]], 75],
+            ]
+        )
 
         matches = list(filtered.take(10).evaluate())
         assert len(matches) <= 10  # Might be less if not enough match
@@ -249,11 +253,13 @@ class TestInfiniteStreamFiltering:
 
         # Find weekend data points with high values
         s = stream(source)
-        filtered = s.filter([
-            "and",
-            ["eq?", ["@", [["key", "is_weekend"]]], True],
-            ["gt?", ["@", [["key", "value"]]], 60],
-        ])
+        filtered = s.filter(
+            [
+                "and",
+                ["eq?", ["@", [["key", "is_weekend"]]], True],
+                ["gt?", ["@", [["key", "value"]]], 60],
+            ]
+        )
 
         weekend_highs = list(filtered.take(5).evaluate())
         assert all(item["is_weekend"] for item in weekend_highs)

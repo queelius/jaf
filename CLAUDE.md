@@ -10,12 +10,13 @@ JAF (JSON Array Filter) is a domain-specific language for filtering JSON arrays 
 
 ### Main Components
 
-- **`jaf/jaf.py`**: Core filtering function that takes data arrays and queries, returns `JafResultSet` objects
+- **`jaf/lazy_streams.py`**: Core streaming classes (LazyDataStream, FilteredStream, MappedStream)
 - **`jaf/jaf_eval.py`**: AST evaluation engine that processes query expressions
 - **`jaf/path_evaluation.py`**: Path resolution system for navigating JSON structures using tagged AST components
-- **`jaf/result_set.py`**: `JafResultSet` class for representing filter results and boolean operations
-- **`jaf/console_script.py`**: CLI interface providing `jaf filter`, `jaf and`, `jaf or`, etc. commands
+- **`jaf/streaming_loader.py`**: Streaming data loader that dispatches to various source types
+- **`jaf/console_script.py`**: CLI interface providing `jaf filter`, `jaf map`, `jaf stream`, etc. commands
 - **`jaf/collection_loader.py`**: Data loading from files, directories, and stdin
+- **`jaf/lazy_ops_loader.py`**: Lazy operation implementations (filter, map, take, groupby, join, etc.)
 
 ### Query System
 
@@ -52,13 +53,29 @@ Special `@` syntax provides concise path notation: `"@user.name"` equals `["@", 
 - Path access: `@`
 - Existence: `exists?`
 
-### Result Sets
+### Streaming Architecture
 
-`JafResultSet` objects contain:
-- `indices`: Sorted list of matching item indices
-- `collection_size`: Total items in original collection
-- `collection_id`: Optional identifier for the data source
-- `collection_source`: Optional metadata for data resolution
+JAF now uses a lazy streaming architecture where operations build pipelines:
+- `LazyDataStream`: Base class for all streams
+- `FilteredStream`: Stream filtered by a predicate query
+- `MappedStream`: Stream with transformed values
+- Operations are composable: `stream(file).filter(query).map(expr).take(10)`
+- Lazy evaluation - nothing runs until `.evaluate()` is called
+
+## TODO / Future Work
+
+### Streaming vs Non-Streaming Operations
+Currently, some operations (join, groupby, distinct, intersect, except) are non-streaming and load entire datasets into memory. Consider implementing windowed versions:
+- Add `window_size` parameter (default: 1000) to make operations truly streaming
+- Sliding window for distinct, join operations  
+- Tumbling window for groupby
+- Document approximate nature of windowed results
+- Allow `window_size=float('inf')` for exact results with memory warning
+
+### Code Modularization
+- Better separation of concerns between streaming infrastructure and operations
+- Separate modules for different operation types (stateless, windowed, aggregating)
+- More consistent error handling across operations
 
 ## Development Commands
 

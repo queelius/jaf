@@ -1,4 +1,4 @@
-site_name: JAF - JSON Array Filter
+site_name: JAF - Just Another Flow
 site_url: https://queelius.github.io/jaf/
 repo_url: https://github.com/queelius/jaf
 repo_name: queelius/jaf
@@ -60,6 +60,9 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Specification: specification.md
-  - CLI Reference: cli_reference.md
-  # - API Reference: api_reference.md # Placeholder for future
+  - Getting Started: getting-started.md
+  - API Guide: api-guide.md
+  - Query Language: query-language.md
+  - CLI Reference: cli-reference.md
+  - Cookbook: cookbook.md
+  - Advanced Topics: advanced.md

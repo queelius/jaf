@@ -1,6 +1,7 @@
 import unittest
-from jaf.jaf_eval import jaf_eval, jafError
+from jaf.jaf_eval import jaf_eval
 from jaf.path_exceptions import PathSyntaxError
+from jaf.exceptions import JAFError
 
 
 class TestJafEvalPathStrings(unittest.TestCase):
@@ -169,17 +170,20 @@ class TestJafEvalPathStrings(unittest.TestCase):
         """Test validation of path arguments"""
         # Test wrong number of arguments
         from jaf.exceptions import InvalidArgumentCountError
+
         with self.assertRaises(InvalidArgumentCountError):
             jaf_eval.eval(["@"], self.test_data)
 
     def test_path_argument_validation_2(self):
         from jaf.exceptions import InvalidArgumentCountError
+
         with self.assertRaises(InvalidArgumentCountError):
             jaf_eval.eval(["@", "user.name", "extra"], self.test_data)
 
     def test_path_argument_validation_3(self):
         # Test invalid path argument types
         from jaf.exceptions import InvalidQueryFormatError
+
         with self.assertRaises(InvalidQueryFormatError):
             jaf_eval.eval(["@", 123], self.test_data)
 
@@ -190,6 +194,7 @@ class TestJafEvalPathStrings(unittest.TestCase):
 
         # Test manually constructed invalid AST to verify validation
         from jaf.exceptions import UnknownPathOperationError, InvalidQueryFormatError
+
         with self.assertRaises(UnknownPathOperationError):
             jaf_eval.eval(["@", [["invalid_op", "test"]]], self.test_data)
 
