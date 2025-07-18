@@ -21,6 +21,38 @@ from .dsl_compiler import smart_compile, DSLSyntaxError
 logger = logging.getLogger(__name__)
 
 
+def add_source_arguments(parser):
+    """Add common source-related arguments to a parser."""
+    # Directory source options
+    parser.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Recursively scan directories (only applies to directory sources).",
+    )
+    parser.add_argument(
+        "--pattern",
+        type=str,
+        help="File pattern to match (e.g., '*.jsonl') when scanning directories.",
+    )
+    # CSV source options
+    parser.add_argument(
+        "--delimiter",
+        type=str,
+        help="CSV delimiter character (default: comma).",
+    )
+    parser.add_argument(
+        "--headers",
+        action="store_true",
+        default=None,
+        help="CSV has headers (default: auto-detect).",
+    )
+    parser.add_argument(
+        "--no-headers",
+        action="store_true",
+        help="CSV does not have headers.",
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="JAF: JSON Array Filter and Stream Processing.",
@@ -62,6 +94,7 @@ def main():
         action="store_true",
         help="Evaluate and output results (default: output stream descriptor).",
     )
+    add_source_arguments(filter_parser)
 
     # --- 'map' Subcommand ---
     map_parser = subparsers.add_parser(
@@ -84,6 +117,7 @@ def main():
         action="store_true",
         help="Evaluate and output results (default: output stream descriptor).",
     )
+    add_source_arguments(map_parser)
 
     # --- 'take' Subcommand ---
     take_parser = subparsers.add_parser(
@@ -106,6 +140,7 @@ def main():
         action="store_true",
         help="Evaluate and output results (default: output stream descriptor).",
     )
+    add_source_arguments(take_parser)
 
     # --- 'skip' Subcommand ---
     skip_parser = subparsers.add_parser(
@@ -128,6 +163,7 @@ def main():
         action="store_true",
         help="Evaluate and output results (default: output stream descriptor).",
     )
+    add_source_arguments(skip_parser)
 
     # --- 'batch' Subcommand ---
     batch_parser = subparsers.add_parser(
@@ -150,6 +186,7 @@ def main():
         action="store_true",
         help="Evaluate and output results (default: output stream descriptor).",
     )
+    add_source_arguments(batch_parser)
 
     # --- 'stream' Subcommand ---
     stream_parser = subparsers.add_parser(
@@ -211,6 +248,7 @@ def main():
         action="store_true",
         help="Output stream descriptor JSON instead of evaluating (default is to evaluate).",
     )
+    add_source_arguments(stream_parser)
 
     # --- 'eval' Subcommand ---
     eval_parser = subparsers.add_parser(
@@ -223,6 +261,7 @@ def main():
         default="-",
         help="Path to stream descriptor JSON file or '-' for stdin.",
     )
+    add_source_arguments(eval_parser)
 
     # --- Boolean Operations ---
     # 'and' Subcommand
@@ -334,6 +373,7 @@ def main():
         default="-",
         help="Path to stream descriptor JSON file or '-' for stdin.",
     )
+    add_source_arguments(info_parser)
 
     args = parser.parse_args()
 
@@ -382,7 +422,7 @@ def handle_filter_command(args):
     logger.debug(f"Filter command with args: {args}")
 
     # Load the data stream
-    data_stream = _load_input_stream(args.input_source)
+    data_stream = _load_input_stream(args.input_source, args)
 
     # Parse the query
     try:
@@ -411,7 +451,7 @@ def handle_map_command(args):
     logger.debug(f"Map command with args: {args}")
 
     # Load the data stream
-    data_stream = _load_input_stream(args.input_source)
+    data_stream = _load_input_stream(args.input_source, args)
 
     # Parse the expression
     try:
@@ -440,7 +480,7 @@ def handle_take_command(args):
     logger.debug(f"Take command with args: {args}")
 
     # Load input stream
-    input_stream = _load_input_stream(args.input_source)
+    input_stream = _load_input_stream(args.input_source, args)
 
     # Apply take operation
     result_stream = input_stream.take(args.count)
@@ -462,7 +502,7 @@ def handle_skip_command(args):
     logger.debug(f"Skip command with args: {args}")
 
     # Load input stream
-    input_stream = _load_input_stream(args.input_source)
+    input_stream = _load_input_stream(args.input_source, args)
 
     # Apply skip operation
     result_stream = input_stream.skip(args.count)
@@ -484,7 +524,7 @@ def handle_batch_command(args):
     logger.debug(f"Batch command with args: {args}")
 
     # Load input stream
-    input_stream = _load_input_stream(args.input_source)
+    input_stream = _load_input_stream(args.input_source, args)
 
     # Apply batch operation
     result_stream = input_stream.batch(args.size)
@@ -501,8 +541,13 @@ def handle_batch_command(args):
         print(json.dumps(result_stream.to_dict(), separators=(",", ":")))
 
 
-def _load_input_stream(input_source: str):
-    """Helper to load a stream from various input sources."""
+def _load_input_stream(input_source: str, args=None):
+    """Helper to load a stream from various input sources.
+    
+    Args:
+        input_source: Path to file/directory or '-' for stdin
+        args: Optional argparse namespace with source configuration flags
+    """
     if input_source == "-":
         # Read from stdin
         stdin_content = sys.stdin.read()
@@ -531,12 +576,46 @@ def _load_input_stream(input_source: str):
             except (json.JSONDecodeError, KeyError):
                 pass
 
-        # Otherwise load as data file
+        # Build source configuration with any CSV options
+        # Always treat .tsv files as CSV with tab delimiter
+        if args and (input_source.endswith((".csv", ".tsv")) or (
+            (hasattr(args, "delimiter") and args.delimiter) or
+            (hasattr(args, "headers") and args.headers) or
+            (hasattr(args, "no_headers") and args.no_headers)
+        )):
+            # Build CSV wrapper with custom options
+            csv_config = {
+                "type": "csv",
+                "inner_source": {"type": "file", "path": input_source}
+            }
+            
+            # Set delimiter - default to tab for .tsv files
+            if hasattr(args, "delimiter") and args.delimiter:
+                csv_config["delimiter"] = args.delimiter
+            elif input_source.endswith(".tsv"):
+                csv_config["delimiter"] = "\t"
+            
+            if hasattr(args, "headers") and args.headers:
+                csv_config["has_header"] = True
+            elif hasattr(args, "no_headers") and args.no_headers:
+                csv_config["has_header"] = False
+            
+            return stream(**csv_config)
+        
+        # Otherwise load as regular data file
         return stream(input_source)
 
     elif os.path.isdir(input_source):
-        # Create a directory source
-        return stream({"type": "directory", "path": os.path.abspath(input_source)})
+        # Create a directory source with optional pattern/recursive
+        source_config = {"type": "directory", "path": os.path.abspath(input_source)}
+        
+        if args:
+            if hasattr(args, "recursive") and args.recursive:
+                source_config["recursive"] = True
+            if hasattr(args, "pattern") and args.pattern:
+                source_config["pattern"] = args.pattern
+        
+        return stream(**source_config)
 
     else:
         print(f"Error: Input source '{input_source}' not found.", file=sys.stderr)
@@ -570,7 +649,7 @@ def handle_stream_command(args):
     logger.debug(f"Stream command with args: {args}")
 
     # Load input stream
-    current_stream = _load_input_stream(args.input_source)
+    current_stream = _load_input_stream(args.input_source, args)
 
     # Track if we've entered lazy mode
     is_lazy = args.lazy

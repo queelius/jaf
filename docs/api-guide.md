@@ -51,6 +51,15 @@ s = stream({
 })
 ```
 
+Alterntively, you can use the kwargs in the `stream()` function:
+
+```python
+s = stream(directory="directory",
+           path="/data",
+           recursive=True,
+           pattern="*.json*")
+```
+
 #### Memory Sources
 
 ```python

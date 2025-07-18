@@ -292,18 +292,38 @@ class JoinedStream(LazyDataStream):
 
 
 # Factory function to create streams from sources
-def stream(source: Union[str, Dict[str, Any]]) -> LazyDataStream:
+def stream(source: Optional[Union[str, Dict[str, Any]]] = None, **kwargs) -> LazyDataStream:
     """
     Create a lazy data stream from a source.
 
     Args:
-        source: Either a file path or a source descriptor dict
+        source: Either a file path, a source descriptor dict, or None (if using kwargs)
+        **kwargs: Source parameters (type, path, pattern, etc.)
 
     Returns:
         A LazyDataStream ready for operations
+
+    Examples:
+        # Using file path
+        stream("data.jsonl")
+        
+        # Using dict descriptor
+        stream({"type": "file", "path": "data.jsonl"})
+        
+        # Using kwargs
+        stream(type="file", path="data.jsonl")
+        stream(type="directory", path="/data", recursive=True, pattern="*.json*")
+        stream(type="fibonacci", limit=100)
+        
+        # Converting dict to kwargs
+        source_dict = {"type": "directory", "path": "/data", "recursive": True}
+        stream(**source_dict)
     """
-    if isinstance(source, str):
-        # Simple file path
+    if source is None and kwargs:
+        # Using kwargs style
+        source_dict = dict(kwargs)
+    elif isinstance(source, str) and not kwargs:
+        # Simple file path (only when no kwargs provided)
         path = source
 
         # Build appropriate source based on extension
@@ -320,9 +340,17 @@ def stream(source: Union[str, Dict[str, Any]]) -> LazyDataStream:
             source_dict = {"type": "jsonl", "inner_source": source_dict}
         elif ".csv" in path:
             source_dict = {"type": "csv", "inner_source": source_dict}
+        elif ".tsv" in path:
+            source_dict = {"type": "csv", "inner_source": source_dict, "delimiter": "\t"}
         elif ".json" in path:
             source_dict = {"type": "json_array", "inner_source": source_dict}
-    else:
+    elif isinstance(source, dict) and not kwargs:
+        # Dict descriptor (only when no kwargs provided)
         source_dict = source
+    elif source is not None:
+        # If source is provided with kwargs, it's an error
+        raise ValueError("Cannot provide both source and kwargs")
+    else:
+        raise ValueError("Must provide either a source path, dict descriptor, or kwargs")
 
     return LazyDataStream(source_dict)
