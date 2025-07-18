@@ -64,11 +64,11 @@ install-dev: venv ## Install with development dependencies
 	$(PIP_VENV) install -e .[dev]
 
 # Development targets
-test: venv ## Run all tests
-	$(VENV_BIN)/pytest 
+test: venv ## Run all tests in `tests/` directory
+	$(VENV_BIN)/pytest tests/
 
 test-cov: venv ## Run tests with coverage report
-	$(VENV_BIN)/pytest --cov=$(PROJECT_NAME) --cov-report=html --cov-report=term
+	$(VENV_BIN)/pytest --cov=$(PROJECT_NAME) --cov-report=html --cov-report=term tests/
 
 lint: venv ## Run flake8 linting
 	$(VENV_BIN)/flake8 $(PROJECT_NAME)/ tests/ || echo "flake8 not available, install with: pip install flake8"
