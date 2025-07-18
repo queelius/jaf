@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jaf"
-version = "0.6.0"
+version = "0.6.1"
 description = "JAF (Just Another Flow) - A streaming data processing system for JSON with lazy evaluation, composable operations, and a fluent API"
 authors = [
     { name = "Alex Towell", email = "lex@metafunctor.com" }

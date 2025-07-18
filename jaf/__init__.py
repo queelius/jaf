@@ -6,7 +6,7 @@ from .path_exceptions import PathSyntaxError
 from .path_conversion import path_ast_to_string, string_to_path_ast
 from .exceptions import JAFError
 
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 
 __all__ = [
     "stream",
