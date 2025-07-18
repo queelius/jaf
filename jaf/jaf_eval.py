@@ -8,7 +8,10 @@ from .path_evaluation import exists, eval_path
 from .path_types import PathValues
 from .utils import adapt_jaf_operator
 from .path_conversion import string_to_path_ast
-from .path_exceptions import PathSyntaxError
+from .exceptions import (
+    UnknownOperatorError, InvalidArgumentCountError, InvalidQueryFormatError,
+    PathSyntaxError, UnknownPathOperationError
+)
 
 # Set up the logger
 logger = logging.getLogger(__name__)
@@ -18,7 +21,7 @@ class jafError(Exception):
     pass
 
 
-def _jaf_subtract(*args):
+def _jaf_subtract(*args, obj):
     if not args:
         return 0
     if len(args) == 1:
@@ -26,7 +29,7 @@ def _jaf_subtract(*args):
     return functools.reduce(lambda x, y: x - y, args)
 
 
-def _jaf_divide(*args):
+def _jaf_divide(*args, obj):
     if not args:
         raise ValueError("Division operator requires at least one argument.")
     if len(args) == 1:
@@ -179,6 +182,8 @@ class jaf_eval:
         "ceil": adapt_jaf_operator(2, lambda x, obj: math.ceil(x)),
         "max": adapt_jaf_operator(-1, lambda *args, obj: max(args) if args else None),
         "min": adapt_jaf_operator(-1, lambda *args, obj: min(args) if args else None),
+        # Object construction
+        "dict": adapt_jaf_operator(-1, lambda *args, obj: dict(zip(args[::2], args[1::2]))),
     }
 
     @staticmethod
@@ -205,7 +210,7 @@ class jaf_eval:
             return query
 
         if not query:
-            raise ValueError("Invalid query format.")
+            raise InvalidQueryFormatError("Query cannot be empty")
 
         # Get the operator (first element)
         op = query[0]
@@ -221,36 +226,34 @@ class jaf_eval:
         if op in jaf_eval.funcs:
             return jaf_eval._eval_function(op, args, obj)
 
-        raise ValueError(f"Unknown operator: {op}")
+        raise UnknownOperatorError(op)
 
     @staticmethod
     def _eval_special_form(op, args, obj):
         """Handle special forms that need custom evaluation logic"""
         if op == "self":
             if args:
-                raise ValueError("'self' operator takes no arguments.")
+                raise InvalidArgumentCountError("self", 0, len(args))
             return obj
 
         elif op == "literal":
             if len(args) != 1:
-                raise ValueError("'literal' operator expects exactly one argument.")
+                raise InvalidArgumentCountError("literal", 1, len(args))
             return args[0]  # Return the argument unevaluated
 
         elif op == "@":
             if len(args) != 1:
-                raise ValueError(
-                    f"'{op}' operator expects exactly one argument (a path string)."
-                )
+                raise InvalidArgumentCountError(op, 1, len(args))
             path_expr = args[0]
 
             if isinstance(path_expr, str):
                 path_expr_ast = string_to_path_ast(path_expr)
                 if not path_expr_ast:
-                    raise ValueError("Invalid path expression: empty or malformed")
+                    raise PathSyntaxError("Invalid path expression: empty or malformed")
                 path_expr = path_expr_ast
 
             if not isinstance(path_expr, list):
-                raise ValueError("path argument must be a list of path components")
+                raise InvalidQueryFormatError("Path argument must be a list of path components")
 
             # Validate each component of the path expression
             known_path_ops = {
@@ -264,20 +267,20 @@ class jaf_eval:
             }
             for component in path_expr:
                 if not isinstance(component, list):
-                    raise ValueError("Path component must be a list")
+                    raise InvalidQueryFormatError("Path component must be a list")
                 if not component:
-                    raise ValueError("Path component cannot be empty")
+                    raise InvalidQueryFormatError("Path component cannot be empty")
                 if not isinstance(component[0], str):
-                    raise ValueError("Path component operation must be a string")
+                    raise InvalidQueryFormatError("Path component operation must be a string")
                 if component[0] not in known_path_ops:
-                    raise ValueError(f"Unknown path operation: {component[0]}")
+                    raise UnknownPathOperationError(component[0])
 
             res = eval_path(path_expr, obj)
             return res
 
         elif op == "exists?":
             if len(args) != 1:
-                raise ValueError(f"'exists?' expects 1 argument, got {len(args)}")
+                raise InvalidArgumentCountError("exists?", 1, len(args))
 
             if isinstance(args[0], str) and args[0].startswith("@"):
                 # Convert @ prefixed strings to path expressions
@@ -299,16 +302,16 @@ class jaf_eval:
                     # Convert string path to AST
                     path_components = string_to_path_ast(path_components)
                     if not path_components:
-                        raise ValueError("Invalid path expression: empty or malformed")
+                        raise PathSyntaxError("Invalid path expression: empty or malformed")
                 if not isinstance(path_components, list):
-                    raise ValueError("path argument must be a list of path components")
+                    raise InvalidQueryFormatError("Path argument must be a list of path components")
                 return exists(path_components, obj)
             else:
-                raise ValueError("exists? argument must be a path expression")
+                raise InvalidQueryFormatError("exists? argument must be a path expression")
 
         elif op == "if":
             if len(args) != 3:
-                raise ValueError(f"'if' expects 3 arguments, got {len(args)}")
+                raise InvalidArgumentCountError("if", 3, len(args))
             cond_expr, true_expr, false_expr = args
 
             # Evaluate condition
@@ -338,12 +341,12 @@ class jaf_eval:
 
         elif op == "not":
             if len(args) != 1:
-                raise ValueError(f"'not' expects 1 argument, got {len(args)}")
+                raise InvalidArgumentCountError("not", 1, len(args))
             result = jaf_eval.eval(args[0], obj)
             return not result
 
         else:
-            raise ValueError(f"Unknown special form: {op}")
+            raise UnknownOperatorError(op)
 
     @staticmethod
     def _eval_function(op, args, obj):
@@ -353,7 +356,7 @@ class jaf_eval:
 
         # Check argument count for non-variadic functions
         if nargs != -1 and len(args) != nargs - 1:
-            raise ValueError(f"'{op}' expects {nargs-1} arguments, got {len(args)}")
+            raise InvalidArgumentCountError(op, nargs-1, len(args))
 
         # Evaluate all arguments
         eval_args = []

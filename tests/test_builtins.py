@@ -361,21 +361,23 @@ class TestErrorHandling:
 
     def test_unknown_operator(self):
         """Test unknown operator raises error"""
-        with pytest.raises(ValueError, match="Unknown operator"):
+        from jaf.exceptions import UnknownOperatorError
+        with pytest.raises(UnknownOperatorError, match="Unknown operator: unknown-op"):
             jaf_eval.eval(["unknown-op", "arg"], {})
 
     def test_invalid_argument_counts(self):
         """Test invalid argument counts"""
+        from jaf.exceptions import InvalidArgumentCountError
         # eq? expects 2 arguments
-        with pytest.raises(ValueError, match="expects 2 arguments"):
+        with pytest.raises(InvalidArgumentCountError, match=r"'eq\?' expects 2 arguments, got 1"):
             jaf_eval.eval(["eq?", "only-one-arg"], {})
 
         # not expects 1 argument
-        with pytest.raises(ValueError, match="expects 1 argument"):
+        with pytest.raises(InvalidArgumentCountError, match="'not' expects 1 arguments, got 2"):
             jaf_eval.eval(["not", "arg1", "arg2"], {})
 
         # if expects 3 arguments
-        with pytest.raises(ValueError, match="expects 3 arguments"):
+        with pytest.raises(InvalidArgumentCountError, match="'if' expects 3 arguments, got 2"):
             jaf_eval.eval(["if", "condition", "true-branch"], {})
 
     def test_type_errors_return_false(self):
@@ -421,5 +423,6 @@ class TestErrorHandling:
 
     def test_empty_list_as_query(self):
         """Test empty list as query raises error"""
-        with pytest.raises(ValueError, match="Invalid query format"):
+        from jaf.exceptions import InvalidQueryFormatError
+        with pytest.raises(InvalidQueryFormatError, match="Query cannot be empty"):
             jaf_eval.eval([], {})

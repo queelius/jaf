@@ -1,6 +1,7 @@
 from typing import List, Dict, Any, Union, Optional
 import logging
-from .result_set import JafQuerySet, JafQuerySetError
+from .result_set import JafQuerySet, JafQuerySetError  # Keep for compatibility
+from .lazy_streams import FilteredStream, stream
 from .jaf_eval import jaf_eval
 
 logger = logging.getLogger(__name__)
@@ -49,7 +50,49 @@ def jaf(
             "No collection_source provided. In-memory data cannot be lazily evaluated."
         )
         collection_source = {"type": "memory", "data": data}
-
+    
+    # Wrap the source in a filter if we have a query
+    # This ensures that operations like take() work on filtered data
+    filtered_source = {
+        "type": "filter",
+        "query": query,
+        "inner_source": collection_source
+    }
+    
     return JafQuerySet(
-        query=query, collection_id=collection_id, collection_source=collection_source
+        query=query, collection_id=collection_id, collection_source=filtered_source
     )
+
+
+def jaf_stream(
+    source: Union[str, Dict[str, Any], List[Any]],
+    query: Union[List, str],
+) -> FilteredStream:
+    """
+    Creates a filtered stream using the new lazy stream architecture.
+    
+    This is the new API that returns FilteredStream instead of JafQuerySet.
+    
+    :param source: Data source - can be:
+        - A file path string
+        - A source descriptor dict
+        - A list of JSON values (for compatibility)
+    :param query: The JAF query as a list-based AST or a raw JSON string.
+    :return: A FilteredStream ready for further operations.
+    :raises jafError: If the query is invalid.
+    """
+    if not query:
+        raise jafError("No query provided.")
+    
+    # Handle legacy list input
+    if isinstance(source, list):
+        logger.warning(
+            "Passing data as a list is deprecated. Consider using a proper source descriptor."
+        )
+        source_stream = stream({"type": "memory", "data": source})
+    else:
+        source_stream = stream(source)
+    
+    logger.debug(f"Creating filtered stream with {query=}")
+    
+    return source_stream.filter(query)

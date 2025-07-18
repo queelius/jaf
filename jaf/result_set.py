@@ -130,115 +130,132 @@ class JafQuerySet:
         """Operator overload for `~` (NOT)."""
         return self.NOT()
 
-    # Lazy streaming operations
-    def take(self, n: int) -> Generator[Any, None, None]:
+    # Lazy streaming operations (composable)
+    def take(self, n: int) -> "JafQuerySet":
         """
-        Take the first n items from the evaluated stream.
+        Create a new query set that takes only the first n items.
 
         This is useful for infinite streams or when you only need a sample.
+        The operation is composable - you can chain multiple operations.
 
         Args:
             n: Number of items to take
 
-        Yields:
-            Up to n items from the stream
+        Returns:
+            A new JafQuerySet with the take operation applied
+            
+        Example:
+            result.take(100).skip(10)  # Take first 100, then skip first 10 of those
         """
-        count = 0
-        for item in self.evaluate():
-            if count >= n:
-                break
-            yield item
-            count += 1
+        new_source = {
+            "type": "take",
+            "n": n,
+            "inner_source": self.collection_source
+        }
+        
+        return JafQuerySet(
+            query=self.query,
+            collection_id=self.collection_id,
+            collection_source=new_source
+        )
 
-    def skip(self, n: int) -> Generator[Any, None, None]:
+    def skip(self, n: int) -> "JafQuerySet":
         """
-        Skip the first n items from the evaluated stream.
+        Create a new query set that skips the first n items.
 
         Args:
             n: Number of items to skip
 
-        Yields:
-            Items after skipping the first n
+        Returns:
+            A new JafQuerySet with the skip operation applied
         """
-        count = 0
-        for item in self.evaluate():
-            if count >= n:
-                yield item
-            else:
-                count += 1
+        new_source = {
+            "type": "skip",
+            "n": n,
+            "inner_source": self.collection_source
+        }
+        
+        return JafQuerySet(
+            query=self.query,
+            collection_id=self.collection_id,
+            collection_source=new_source
+        )
 
-    def take_while(self, predicate_query: List) -> Generator[Any, None, None]:
+    def take_while(self, predicate_query: List) -> "JafQuerySet":
         """
-        Take items from the stream while the predicate query is true.
+        Create a new query set that takes items while a predicate is true.
 
-        Stops yielding as soon as the predicate becomes false.
+        Stops at the first item where the predicate becomes false.
 
         Args:
             predicate_query: JAF query that returns a boolean
 
-        Yields:
-            Items while the predicate is true
+        Returns:
+            A new JafQuerySet with the take_while operation applied
         """
-        for item in self.evaluate():
-            try:
-                result = jaf_eval.eval(predicate_query, item)
-                if isinstance(result, bool) and result:
-                    yield item
-                else:
-                    break
-            except Exception:
-                break
+        new_source = {
+            "type": "take_while",
+            "query": predicate_query,
+            "inner_source": self.collection_source
+        }
+        
+        return JafQuerySet(
+            query=self.query,
+            collection_id=self.collection_id,
+            collection_source=new_source
+        )
 
-    def skip_while(self, predicate_query: List) -> Generator[Any, None, None]:
+    def skip_while(self, predicate_query: List) -> "JafQuerySet":
         """
-        Skip items from the stream while the predicate query is true.
+        Create a new query set that skips items while a predicate is true.
 
-        Starts yielding once the predicate becomes false.
+        Starts including items once the predicate becomes false.
 
         Args:
             predicate_query: JAF query that returns a boolean
 
-        Yields:
-            Items after the predicate becomes false
+        Returns:
+            A new JafQuerySet with the skip_while operation applied
         """
-        skipping = True
-        for item in self.evaluate():
-            if skipping:
-                try:
-                    result = jaf_eval.eval(predicate_query, item)
-                    if isinstance(result, bool) and result:
-                        continue
-                    else:
-                        skipping = False
-                except Exception:
-                    skipping = False
-
-            if not skipping:
-                yield item
+        new_source = {
+            "type": "skip_while",
+            "query": predicate_query,
+            "inner_source": self.collection_source
+        }
+        
+        return JafQuerySet(
+            query=self.query,
+            collection_id=self.collection_id,
+            collection_source=new_source
+        )
 
     def slice(
         self, start: int, stop: Optional[int] = None, step: int = 1
-    ) -> Generator[Any, None, None]:
+    ) -> "JafQuerySet":
         """
-        Slice the stream similar to Python's slice notation.
+        Create a new query set with Python-style slicing.
 
         Args:
             start: Starting index
             stop: Stopping index (exclusive), None for no limit
             step: Step size
 
-        Yields:
-            Items in the slice
+        Returns:
+            A new JafQuerySet with the slice operation applied
         """
-        index = 0
-        for item in self.evaluate():
-            if stop is not None and index >= stop:
-                break
-
-            if index >= start and (index - start) % step == 0:
-                yield item
-
-            index += 1
+        new_source = {
+            "type": "slice",
+            "start": start,
+            "stop": stop,
+            "step": step,
+            "inner_source": self.collection_source
+        }
+        
+        return JafQuerySet(
+            query=self.query,
+            collection_id=self.collection_id,
+            collection_source=new_source
+        )
 
     def enumerate(self, start: int = 0) -> Generator[Tuple[int, Any], None, None]:
         """
@@ -471,29 +488,10 @@ class JafQuerySet:
         total_count = 0
 
         try:
+            # The source descriptor already includes any filtering/transformation operations
+            # The StreamingLoader will apply them when we stream
             for item in loader.stream(source_to_load):
-                total_count += 1
-                try:
-                    result = jaf_eval.eval(self.query, item)
-                    if isinstance(result, bool) and result:
-                        match_count += 1
-                        logger.debug(f"Item {total_count} matched query")
-                        yield item
-                    elif not isinstance(result, bool):
-                        logger.warning(
-                            f"Query returned non-boolean value for item {total_count}: {result}. Item does not match."
-                        )
-                except ValueError as e:
-                    # Unknown operators, syntax errors - these are real query problems
-                    raise JafQuerySetError(f"Query evaluation failed: {e}") from e
-                except (KeyError, AttributeError, TypeError, IndexError) as e:
-                    # Expected "item doesn't match" errors - path not found, wrong types, etc.
-                    logger.debug(f"Item {total_count} doesn't match query due to: {e}")
-                except Exception as e:
-                    # Unexpected errors - better to fail than silently ignore
-                    raise JafQuerySetError(
-                        f"Unexpected error evaluating query on item {total_count}: {e}"
-                    ) from e
+                yield item
 
         except (FileNotFoundError, ValueError) as e:
             raise JafQuerySetError(

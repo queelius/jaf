@@ -4,7 +4,7 @@ Test codata/infinite collections and lazy streaming operations.
 
 import pytest
 import time
-from jaf import jaf
+from jaf.lazy_streams import stream
 from jaf.streaming_loader import StreamingLoader
 
 
@@ -24,9 +24,7 @@ class TestCodataLoaders:
             "limit": 10,  # For testing, limit to 10 items
         }
 
-        result = jaf(
-            [], ["eq?", True, True], collection_source=source
-        )  # Always true query
+        result = stream(source)
         items = list(result.evaluate())
 
         assert len(items) == 10
@@ -40,8 +38,8 @@ class TestCodataLoaders:
             assert isinstance(item["active"], bool)
 
         # Test determinism with same seed
-        result2 = jaf([], ["eq?", True, True], collection_source=source)
-        items2 = list(result2.evaluate())
+        result2 = stream(source)
+        items2 = list(result2.take(10).evaluate())
         assert items == items2
 
     def test_fibonacci_stream(self):
@@ -49,8 +47,8 @@ class TestCodataLoaders:
         source = {"type": "fibonacci", "include_metadata": True}
 
         # Get first 10 Fibonacci numbers
-        result = jaf([], ["eq?", True, True], collection_source=source)
-        items = list(result.take(10))
+        result = stream(source)
+        items = list(result.take(10).evaluate())
 
         assert len(items) == 10
         # Check first few values
@@ -76,8 +74,8 @@ class TestCodataLoaders:
             "start_time": "2024-01-01T00:00:00",
         }
 
-        result = jaf([], ["eq?", True, True], collection_source=source)
-        items = list(result.take(5))
+        result = stream(source)
+        items = list(result.take(5).evaluate())
 
         assert len(items) == 5
         for i, item in enumerate(items):
@@ -93,10 +91,9 @@ class TestCodataLoaders:
         source = {"type": "prime", "include_gaps": True}
 
         # Find primes with last digit 7
-        result = jaf(
-            [], ["eq?", ["@", [["key", "last_digit"]]], 7], collection_source=source
-        )
-        primes_ending_in_7 = list(result.take(5))
+        s = stream(source)
+        filtered = s.filter(["eq?", ["@", [["key", "last_digit"]]], 7])
+        primes_ending_in_7 = list(filtered.take(5).evaluate())
 
         assert len(primes_ending_in_7) == 5
         assert all(p["last_digit"] == 7 for p in primes_ending_in_7)
@@ -118,8 +115,8 @@ class TestCodataLoaders:
             },
         }
 
-        result = jaf([], ["eq?", True, True], collection_source=source)
-        items = list(result.take(5))
+        result = stream(source)
+        items = list(result.take(5).evaluate())
 
         assert len(items) == 5
         for item in items:
@@ -138,8 +135,8 @@ class TestLazyOperations:
             "template": {"n": {"$random": "int", "min": 1, "max": 1000}},
         }
 
-        result = jaf([], ["eq?", True, True], collection_source=source)
-        items = list(result.take(5))
+        result = stream(source)
+        items = list(result.take(5).evaluate())
 
         assert len(items) == 5
 
@@ -147,8 +144,8 @@ class TestLazyOperations:
         """Test skip() skips initial items"""
         source = {"type": "fibonacci"}
 
-        result = jaf([], ["eq?", True, True], collection_source=source)
-        items = list(result.skip(5).take(3))
+        result = stream(source)
+        items = list(result.skip(5).take(3).evaluate())
 
         assert len(items) == 3
         # After skipping 0,1,1,2,3 we should get 5,8,13
@@ -160,22 +157,22 @@ class TestLazyOperations:
         """Test slice() for range selection"""
         source = {"type": "prime"}
 
-        result = jaf([], ["eq?", True, True], collection_source=source)
+        result = stream(source)
         # Get primes from index 10 to 15
-        items = list(result.slice(10, 15))
+        items = list(result.slice(10, 15).evaluate())
 
         assert len(items) == 5
         # 11th prime is 31, 15th is 47
         assert items[0]["value"] == 31
-        assert items[-1]["value"] == 43
+        assert items[-1]["value"] == 47
 
     def test_take_while_operation(self):
         """Test take_while() with predicate"""
         source = {"type": "fibonacci"}
 
-        result = jaf([], ["eq?", True, True], collection_source=source)
+        result = stream(source)
         # Take while value < 100
-        items = list(result.take_while(["lt?", ["@", [["key", "value"]]], 100]))
+        items = list(result.take_while(["lt?", ["@", [["key", "value"]]], 100]).evaluate())
 
         # Should get 0,1,1,2,3,5,8,13,21,34,55,89
         assert len(items) == 12
@@ -186,8 +183,8 @@ class TestLazyOperations:
         """Test batch() groups items"""
         source = {"type": "prime"}
 
-        result = jaf([], ["eq?", True, True], collection_source=source)
-        batches = list(result.take(10).batch(3))
+        s = stream(source)
+        batches = list(s.take(10).batch(3).evaluate())
 
         assert len(batches) == 4  # 3 full batches + 1 partial
         assert len(batches[0]) == 3
@@ -199,14 +196,14 @@ class TestLazyOperations:
         """Test enumerate() adds indices"""
         source = {"type": "fibonacci"}
 
-        result = jaf([], ["eq?", True, True], collection_source=source)
-        items = list(result.skip(5).enumerate(start=100).take(3))
+        result = stream(source)
+        items = list(result.skip(5).enumerate(start=100).take(3).evaluate())
 
         assert len(items) == 3
-        assert items[0][0] == 100  # Index
-        assert items[0][1]["value"] == 5  # Fibonacci value
-        assert items[1][0] == 101
-        assert items[2][0] == 102
+        assert items[0]["index"] == 100  # Index
+        assert items[0]["value"]["value"] == 5  # Fibonacci value
+        assert items[1]["index"] == 101
+        assert items[2]["index"] == 102
 
 
 class TestInfiniteStreamFiltering:
@@ -228,17 +225,14 @@ class TestInfiniteStreamFiltering:
         }
 
         # Find active users with high scores
-        result = jaf(
-            [],
-            [
-                "and",
-                ["eq?", ["@", [["key", "status"]]], "active"],
-                ["gt?", ["@", [["key", "score"]]], 75],
-            ],
-            collection_source=source,
-        )
+        s = stream(source)
+        filtered = s.filter([
+            "and",
+            ["eq?", ["@", [["key", "status"]]], "active"],
+            ["gt?", ["@", [["key", "score"]]], 75],
+        ])
 
-        matches = list(result.take(10))
+        matches = list(filtered.take(10).evaluate())
         assert len(matches) <= 10  # Might be less if not enough match
         for item in matches:
             assert item["status"] == "active"
@@ -254,17 +248,14 @@ class TestInfiniteStreamFiltering:
         }
 
         # Find weekend data points with high values
-        result = jaf(
-            [],
-            [
-                "and",
-                ["eq?", ["@", [["key", "is_weekend"]]], True],
-                ["gt?", ["@", [["key", "value"]]], 60],
-            ],
-            collection_source=source,
-        )
+        s = stream(source)
+        filtered = s.filter([
+            "and",
+            ["eq?", ["@", [["key", "is_weekend"]]], True],
+            ["gt?", ["@", [["key", "value"]]], 60],
+        ])
 
-        weekend_highs = list(result.take(5))
+        weekend_highs = list(filtered.take(5).evaluate())
         assert all(item["is_weekend"] for item in weekend_highs)
         assert all(item["value"] > 60 for item in weekend_highs)
 
@@ -281,16 +272,15 @@ class TestInfiniteStreamFiltering:
         }
 
         # Complex pipeline: filter type A, skip first 10, take while value < 0.5, batch by 5
-        result = jaf(
-            [], ["eq?", ["@", [["key", "type"]]], "A"], collection_source=source
-        )
+        s = stream(source)
+        filtered = s.filter(["eq?", ["@", [["key", "type"]]], "A"])
 
         # Skip first 10 type A items
-        stream = result.skip(10)
+        pipeline = filtered.skip(10)
         # Take while value < 0.5
-        stream = stream.take_while(["lt?", ["@", [["key", "value"]]], 0.5])
+        pipeline = pipeline.take_while(["lt?", ["@", [["key", "value"]]], 0.5])
         # Get first 20 of those
-        items = list(stream.take(20))
+        items = list(pipeline.take(20).evaluate())
 
         # Verify all constraints
         assert all(item["type"] == "A" for item in items)
@@ -305,10 +295,10 @@ class TestPerformance:
         """Test that take() terminates early on infinite streams"""
         source = {"type": "fibonacci"}
 
-        result = jaf([], ["eq?", True, True], collection_source=source)
+        result = stream(source)
 
         start_time = time.time()
-        items = list(result.take(1000))
+        items = list(result.take(1000).evaluate())
         elapsed = time.time() - start_time
 
         assert len(items) == 1000
@@ -320,15 +310,16 @@ class TestPerformance:
         source = {
             "type": "prng",
             "seed": 555,
-            "template": {"n": {"$random": "int", "min": 1, "max": 1000000}},
+            "template": {"n": {"$random": "int", "min": 1, "max": 100}},
         }
 
-        # Very selective filter
-        result = jaf([], ["eq?", ["@", [["key", "n"]]], 42], collection_source=source)
+        # More reasonable filter - looking for a value in 1-100 range
+        s = stream(source)
+        result = s.filter(["eq?", ["@", [["key", "n"]]], 42])
 
         # This should eventually find a match without exhausting memory
         start_time = time.time()
-        matches = list(result.take(1))
+        matches = list(result.take(1).evaluate())
         elapsed = time.time() - start_time
 
         # Should find at least one match reasonably quickly

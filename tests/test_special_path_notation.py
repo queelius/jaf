@@ -12,7 +12,8 @@ import pytest
 from jaf.jaf_eval import jaf_eval
 from jaf.path_evaluation import eval_path, exists
 from jaf.path_conversion import string_to_path_ast
-from jaf.path_exceptions import PathSyntaxError
+from jaf.exceptions import PathSyntaxError
+from jaf.path_exceptions import PathSyntaxError as PathSyntaxErrorOld
 
 
 class TestAtSyntaxBasics:
@@ -263,6 +264,7 @@ class TestAtSyntaxErrorHandling:
         """Test empty @ expression handling"""
         obj = {"name": "John"}
 
+        # Single @ without path  
         with pytest.raises(PathSyntaxError, match="Empty path expression after @"):
             jaf_eval.eval("@", obj)
 
@@ -270,8 +272,8 @@ class TestAtSyntaxErrorHandling:
         """Test invalid path expressions with @"""
         obj = {"name": "John"}
 
-        # Invalid path syntax should raise PathSyntaxError
-        with pytest.raises(PathSyntaxError):
+        # Invalid path syntax should raise PathSyntaxError (from either module)
+        with pytest.raises((PathSyntaxError, PathSyntaxErrorOld)):
             jaf_eval.eval("@[invalid", obj)  # Unterminated bracket
 
     def test_at_with_wrong_argument_count(self):
@@ -279,14 +281,11 @@ class TestAtSyntaxErrorHandling:
         obj = {"name": "John"}
 
         # @ operator should expect exactly 1 argument
-        with pytest.raises(
-            ValueError, match="'@' operator expects exactly one argument"
-        ):
+        from jaf.exceptions import InvalidArgumentCountError
+        with pytest.raises(InvalidArgumentCountError, match="'@' expects 1 arguments, got 2"):
             jaf_eval.eval(["@", "name", "extra"], obj)
 
-        with pytest.raises(
-            ValueError, match="'@' operator expects exactly one argument"
-        ):
+        with pytest.raises(InvalidArgumentCountError, match="'@' expects 1 arguments, got 0"):
             jaf_eval.eval(["@"], obj)
 
 

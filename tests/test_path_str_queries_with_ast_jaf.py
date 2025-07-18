@@ -168,22 +168,19 @@ class TestJafEvalPathStrings(unittest.TestCase):
     def test_path_argument_validation(self):
         """Test validation of path arguments"""
         # Test wrong number of arguments
-        with self.assertRaisesRegex(
-            ValueError, "'@' operator expects exactly one argument"
-        ):
+        from jaf.exceptions import InvalidArgumentCountError
+        with self.assertRaises(InvalidArgumentCountError):
             jaf_eval.eval(["@"], self.test_data)
 
     def test_path_argument_validation_2(self):
-        with self.assertRaisesRegex(
-            ValueError, "'@' operator expects exactly one argument"
-        ):
+        from jaf.exceptions import InvalidArgumentCountError
+        with self.assertRaises(InvalidArgumentCountError):
             jaf_eval.eval(["@", "user.name", "extra"], self.test_data)
 
     def test_path_argument_validation_3(self):
         # Test invalid path argument types
-        with self.assertRaisesRegex(
-            ValueError, "path argument must be a list of path components"
-        ):
+        from jaf.exceptions import InvalidQueryFormatError
+        with self.assertRaises(InvalidQueryFormatError):
             jaf_eval.eval(["@", 123], self.test_data)
 
     def test_path_component_validation(self):
@@ -192,13 +189,14 @@ class TestJafEvalPathStrings(unittest.TestCase):
         # if we had an invalid operation in the converted AST
 
         # Test manually constructed invalid AST to verify validation
-        with self.assertRaisesRegex(ValueError, "Unknown path operation"):
+        from jaf.exceptions import UnknownPathOperationError, InvalidQueryFormatError
+        with self.assertRaises(UnknownPathOperationError):
             jaf_eval.eval(["@", [["invalid_op", "test"]]], self.test_data)
 
-        with self.assertRaisesRegex(ValueError, "Path component must be a list"):
+        with self.assertRaises(InvalidQueryFormatError):
             jaf_eval.eval(["@", ["not_a_list"]], self.test_data)
 
-        with self.assertRaisesRegex(ValueError, "Path component cannot be empty"):
+        with self.assertRaises(InvalidQueryFormatError):
             jaf_eval.eval(["@", [[]]], self.test_data)
 
     def test_empty_results_from_path_strings(self):

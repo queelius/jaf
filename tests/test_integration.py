@@ -3,7 +3,7 @@ Integration tests for JAF filtering with complex real-world scenarios.
 """
 
 import pytest
-from jaf import jaf, JafQuerySet  # Added JafQuerySet
+from jaf.lazy_streams import stream, FilteredStream
 
 
 class TestRealWorldScenarios:
@@ -102,12 +102,10 @@ class TestRealWorldScenarios:
     def test_simple_filtering(self):
         """Test simple field-based filtering"""
         # Find all active users
-        result = jaf(
-            self.users,
-            ["eq?", ["@", [["key", "active"]]], True],
-            collection_id=self.collection_id,
-        )
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter(["eq?", ["@", [["key", "active"]]], True])
+        result.collection_id = self.collection_id
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right users (active: Alice, Bob, Diana)
@@ -118,8 +116,9 @@ class TestRealWorldScenarios:
         assert matching_names == {"Alice Johnson", "Bob Smith", "Diana Wilson"}
 
         # Find Engineering department
-        result = jaf(self.users, ["eq?", ["@", [["key", "department"]]], "Engineering"])
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter(["eq?", ["@", [["key", "department"]]], "Engineering"])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right users (Engineering: Alice, Charlie)
@@ -129,8 +128,9 @@ class TestRealWorldScenarios:
         assert matching_names == {"Alice Johnson", "Charlie Davis"}
 
         # Find users over 30
-        result = jaf(self.users, ["gt?", ["@", [["key", "age"]]], 30])
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter(["gt?", ["@", [["key", "age"]]], 30])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right users (age > 30: Charlie Davis)
@@ -142,10 +142,9 @@ class TestRealWorldScenarios:
     def test_string_operations(self):
         """Test string-based filtering operations"""
         # Find users with company email
-        result = jaf(
-            self.users, ["ends-with?", ["@", [["key", "email"]]], "company.com"]
-        )
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter(["ends-with?", ["@", [["key", "email"]]], "company.com"])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got all users (all have company emails)
@@ -160,8 +159,9 @@ class TestRealWorldScenarios:
         }
 
         # Find users with names starting with 'A'
-        result = jaf(self.users, ["starts-with?", ["@", [["key", "name"]]], "A"])
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter(["starts-with?", ["@", [["key", "name"]]], "A"])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right users (names starting with 'A': Alice Johnson)
@@ -171,10 +171,9 @@ class TestRealWorldScenarios:
         assert matching_names == {"Alice Johnson"}
 
         # Case-insensitive role search
-        result = jaf(
-            self.users, ["eq?", ["lower-case", ["@", [["key", "role"]]]], "team lead"]
-        )
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter(["eq?", ["lower-case", ["@", [["key", "role"]]]], "team lead"])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right users (role "Team Lead": Charlie Davis)
@@ -186,8 +185,9 @@ class TestRealWorldScenarios:
     def test_array_operations(self):
         """Test array-based filtering"""
         # Find users with Python skills
-        result = jaf(self.users, ["in?", "Python", ["@", [["key", "skills"]]]])
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter(["in?", "Python", ["@", [["key", "skills"]]]])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right users (Python skills: Alice Johnson, Charlie Davis)
@@ -197,8 +197,9 @@ class TestRealWorldScenarios:
         assert matching_names == {"Alice Johnson", "Charlie Davis"}
 
         # Find users with specific number of skills
-        result = jaf(self.users, ["eq?", ["length", ["@", [["key", "skills"]]]], 3])
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter(["eq?", ["length", ["@", [["key", "skills"]]]], 3])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right users (3 skills: Alice Johnson, Bob Smith, Diana Wilson)
@@ -208,8 +209,9 @@ class TestRealWorldScenarios:
         assert matching_names == {"Alice Johnson", "Bob Smith", "Diana Wilson"}
 
         # Find users with more than 3 skills
-        result = jaf(self.users, ["gt?", ["length", ["@", [["key", "skills"]]]], 3])
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter(["gt?", ["length", ["@", [["key", "skills"]]]], 3])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right users (>3 skills: Charlie Davis has 4 skills)
@@ -221,15 +223,13 @@ class TestRealWorldScenarios:
     def test_nested_object_filtering(self):
         """Test filtering on nested object properties"""
         # Find users with dark theme
-        result = jaf(
-            self.users,
-            [
-                "eq?",
-                ["@", [["key", "profile"], ["key", "settings"], ["key", "theme"]]],
-                "dark",
-            ],
-        )
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter([
+            "eq?",
+            ["@", [["key", "profile"], ["key", "settings"], ["key", "theme"]]],
+            "dark",
+        ])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right users (dark theme: Alice Johnson, Charlie Davis)
@@ -239,18 +239,16 @@ class TestRealWorldScenarios:
         assert matching_names == {"Alice Johnson", "Charlie Davis"}
 
         # Find users with notifications enabled
-        result = jaf(
-            self.users,
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter([
+            "eq?",
             [
-                "eq?",
-                [
-                    "@",
-                    [["key", "profile"], ["key", "settings"], ["key", "notifications"]],
-                ],
-                True,
+                "@",
+                [["key", "profile"], ["key", "settings"], ["key", "notifications"]],
             ],
-        )
-        assert isinstance(result, JafQuerySet)
+            True,
+        ])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right users (notifications enabled: Alice Johnson, Charlie Davis, Diana Wilson)
@@ -260,18 +258,16 @@ class TestRealWorldScenarios:
         assert matching_names == {"Alice Johnson", "Charlie Davis", "Diana Wilson"}
 
         # Find Spanish language users
-        result = jaf(
-            self.users,
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter([
+            "eq?",
             [
-                "eq?",
-                [
-                    "@",
-                    [["key", "profile"], ["key", "preferences"], ["key", "language"]],
-                ],
-                "es",
+                "@",
+                [["key", "profile"], ["key", "preferences"], ["key", "language"]],
             ],
-        )
-        assert isinstance(result, JafQuerySet)
+            "es",
+        ])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right users (Spanish language: Diana Wilson)
@@ -283,15 +279,13 @@ class TestRealWorldScenarios:
     def test_wildcard_filtering(self):
         """Test wildcard-based filtering"""
         # Find users with any completed project
-        result = jaf(
-            self.users,
-            [
-                "eq?",
-                ["@", [["key", "projects"], ["wc_level"], ["key", "status"]]],
-                "completed",
-            ],
-        )
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter([
+            "eq?",
+            ["@", [["key", "projects"], ["wc_level"], ["key", "status"]]],
+            "completed",
+        ])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got all users (all have at least one completed project)
@@ -306,15 +300,13 @@ class TestRealWorldScenarios:
         }
 
         # Find users with any high priority project
-        result = jaf(
-            self.users,
-            [
-                "eq?",
-                ["@", [["key", "projects"], ["wc_level"], ["key", "priority"]]],
-                "high",
-            ],
-        )
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter([
+            "eq?",
+            ["@", [["key", "projects"], ["wc_level"], ["key", "priority"]]],
+            "high",
+        ])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got all users (all have at least one high priority project)
@@ -329,11 +321,9 @@ class TestRealWorldScenarios:
         }
 
         # Find users with any project named "API"
-        result = jaf(
-            self.users,
-            ["eq?", ["@", [["key", "projects"], ["wc_level"], ["key", "name"]]], "API"],
-        )
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter(["eq?", ["@", [["key", "projects"], ["wc_level"], ["key", "name"]]], "API"])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right users (project named "API": Alice Johnson)
@@ -345,15 +335,13 @@ class TestRealWorldScenarios:
     def test_complex_logical_conditions(self):
         """Test complex logical combinations"""
         # Active Engineering users
-        result = jaf(
-            self.users,
-            [
-                "and",
-                ["eq?", ["@", [["key", "active"]]], True],
-                ["eq?", ["@", [["key", "department"]]], "Engineering"],
-            ],
-        )
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter([
+            "and",
+            ["eq?", ["@", [["key", "active"]]], True],
+            ["eq?", ["@", [["key", "department"]]], "Engineering"],
+        ])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right users (active Engineering: Alice Johnson)
@@ -363,15 +351,13 @@ class TestRealWorldScenarios:
         assert matching_names == {"Alice Johnson"}
 
         # Users in Engineering OR Design
-        result = jaf(
-            self.users,
-            [
-                "or",
-                ["eq?", ["@", [["key", "department"]]], "Engineering"],
-                ["eq?", ["@", [["key", "department"]]], "Design"],
-            ],
-        )
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter([
+            "or",
+            ["eq?", ["@", [["key", "department"]]], "Engineering"],
+            ["eq?", ["@", [["key", "department"]]], "Design"],
+        ])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right users (Engineering OR Design: Alice Johnson, Charlie Davis, Diana Wilson)
@@ -381,15 +367,13 @@ class TestRealWorldScenarios:
         assert matching_names == {"Alice Johnson", "Charlie Davis", "Diana Wilson"}
 
         # High earners (salary > 80k) with Python skills
-        result = jaf(
-            self.users,
-            [
-                "and",
-                ["gt?", ["@", [["key", "salary"]]], 80000],
-                ["in?", "Python", ["@", [["key", "skills"]]]],
-            ],
-        )
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter([
+            "and",
+            ["gt?", ["@", [["key", "salary"]]], 80000],
+            ["in?", "Python", ["@", [["key", "skills"]]]],
+        ])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right users (high earners with Python: Alice Johnson, Charlie Davis)
@@ -401,15 +385,13 @@ class TestRealWorldScenarios:
     def test_conditional_logic(self):
         """Test conditional (if) logic"""
         # Check if user is senior (age > 30) or has leadership skills
-        result = jaf(
-            self.users,
-            [
-                "or",
-                ["gt?", ["@", [["key", "age"]]], 30],
-                ["in?", "Leadership", ["@", [["key", "skills"]]]],
-            ],
-        )
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter([
+            "or",
+            ["gt?", ["@", [["key", "age"]]], 30],
+            ["in?", "Leadership", ["@", [["key", "skills"]]]],
+        ])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right users (age > 30 OR Leadership: Charlie Davis)
@@ -419,16 +401,14 @@ class TestRealWorldScenarios:
         assert matching_names == {"Charlie Davis"}
 
         # Complex conditional: if active, check department, else check salary
-        result = jaf(
-            self.users,
-            [
-                "if",
-                ["eq?", ["@", [["key", "active"]]], True],
-                ["eq?", ["@", [["key", "department"]]], "Engineering"],  # Alice
-                ["gt?", ["@", [["key", "salary"]]], 100000],
-            ],
-        )  # Charlie
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter([
+            "if",
+            ["eq?", ["@", [["key", "active"]]], True],
+            ["eq?", ["@", [["key", "department"]]], "Engineering"],  # Alice
+            ["gt?", ["@", [["key", "salary"]]], 100000],
+        ])  # Charlie
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right users (if active then Engineering, else salary > 100k: Alice Johnson, Charlie Davis)
@@ -440,10 +420,9 @@ class TestRealWorldScenarios:
     def test_existence_checks(self):
         """Test existence-based filtering"""
         # Users with profile settings
-        result = jaf(
-            self.users, ["exists?", ["@", [["key", "profile"], ["key", "settings"]]]]
-        )
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter(["exists?", ["@", [["key", "profile"], ["key", "settings"]]]])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got all users (all have profile settings)
@@ -458,8 +437,9 @@ class TestRealWorldScenarios:
         }
 
         # Users with projects
-        result = jaf(self.users, ["exists?", ["@", [["key", "projects"]]]])
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter(["exists?", ["@", [["key", "projects"]]]])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got all users (all have projects)
@@ -474,8 +454,9 @@ class TestRealWorldScenarios:
         }
 
         # Check for non-existent field
-        result = jaf(self.users, ["exists?", ["@", [["key", "bonus"]]]])
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter(["exists?", ["@", [["key", "bonus"]]]])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got no users (none have bonus field)
@@ -484,8 +465,9 @@ class TestRealWorldScenarios:
     def test_negation_patterns(self):
         """Test negation patterns"""
         # Not active users
-        result = jaf(self.users, ["not", ["eq?", ["@", [["key", "active"]]], True]])
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter(["not", ["eq?", ["@", [["key", "active"]]], True]])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right users (not active: Charlie Davis)
@@ -495,10 +477,9 @@ class TestRealWorldScenarios:
         assert matching_names == {"Charlie Davis"}
 
         # Users not in Engineering
-        result = jaf(
-            self.users, ["not", ["eq?", ["@", [["key", "department"]]], "Engineering"]]
-        )
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter(["not", ["eq?", ["@", [["key", "department"]]], "Engineering"]])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right users (not Engineering: Bob Smith, Diana Wilson)
@@ -508,8 +489,9 @@ class TestRealWorldScenarios:
         assert matching_names == {"Bob Smith", "Diana Wilson"}
 
         # Users without Python skills
-        result = jaf(self.users, ["not", ["in?", "Python", ["@", [["key", "skills"]]]]])
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter(["not", ["in?", "Python", ["@", [["key", "skills"]]]]])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right users (no Python skills: Bob Smith, Diana Wilson)
@@ -521,8 +503,9 @@ class TestRealWorldScenarios:
     def test_salary_and_compensation_queries(self):
         """Test salary-based filtering scenarios"""
         # High earners
-        result = jaf(self.users, ["gte?", ["@", [["key", "salary"]]], 90000])
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter(["gte?", ["@", [["key", "salary"]]], 90000])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right users (salary >= 90k: Alice Johnson, Charlie Davis)
@@ -532,15 +515,13 @@ class TestRealWorldScenarios:
         assert matching_names == {"Alice Johnson", "Charlie Davis"}
 
         # Mid-range earners
-        result = jaf(
-            self.users,
-            [
-                "and",
-                ["gte?", ["@", [["key", "salary"]]], 70000],
-                ["lt?", ["@", [["key", "salary"]]], 100000],
-            ],
-        )
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter([
+            "and",
+            ["gte?", ["@", [["key", "salary"]]], 70000],
+            ["lt?", ["@", [["key", "salary"]]], 100000],
+        ])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right users (70k <= salary < 100k: Alice Johnson, Diana Wilson)
@@ -550,8 +531,9 @@ class TestRealWorldScenarios:
         assert matching_names == {"Alice Johnson", "Diana Wilson"}
 
         # Entry level salaries
-        result = jaf(self.users, ["lt?", ["@", [["key", "salary"]]], 70000])
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": self.users})
+        result = s.filter(["lt?", ["@", [["key", "salary"]]], 70000])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right users (salary < 70k: Bob Smith)
@@ -574,8 +556,9 @@ class TestEdgeCases:
         ]
 
         # Find objects with empty items
-        result = jaf(data, ["eq?", ["length", ["@", [["key", "items"]]]], 0])
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": data})
+        result = s.filter(["eq?", ["length", ["@", [["key", "items"]]]], 0])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right objects (empty items: Alice and empty name)
@@ -585,8 +568,9 @@ class TestEdgeCases:
         assert matching_names == {"Alice", ""}
 
         # Find objects with non-empty names
-        result = jaf(data, ["neq?", ["@", [["key", "name"]]], ""])
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": data})
+        result = s.filter(["neq?", ["@", [["key", "name"]]], ""])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right objects (non-empty names: Alice, Bob, Charlie)
@@ -606,8 +590,9 @@ class TestEdgeCases:
         ]
 
         # Find numeric values (int)
-        result = jaf(data, ["eq?", ["type", ["@", [["key", "value"]]]], "int"])
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": data})
+        result = s.filter(["eq?", ["type", ["@", [["key", "value"]]]], "int"])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right objects (int type: value 42)
@@ -615,8 +600,9 @@ class TestEdgeCases:
         assert matching_objects[0]["value"] == 42
 
         # Find string values
-        result = jaf(data, ["eq?", ["type", ["@", [["key", "value"]]]], "str"])
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": data})
+        result = s.filter(["eq?", ["type", ["@", [["key", "value"]]]], "str"])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right objects (str type: value "42")
@@ -624,8 +610,9 @@ class TestEdgeCases:
         assert matching_objects[0]["value"] == "42"
 
         # Find list values
-        result = jaf(data, ["eq?", ["type", ["@", [["key", "value"]]]], "list"])
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": data})
+        result = s.filter(["eq?", ["type", ["@", [["key", "value"]]]], "list"])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right objects (list type: value [42])
@@ -644,25 +631,23 @@ class TestEdgeCases:
         ]
 
         # Deep path access
-        result = jaf(
-            data,
+        s = stream({"type": "memory", "data": data})
+        result = s.filter([
+            "eq?",
             [
-                "eq?",
+                "@",
                 [
-                    "@",
-                    [
-                        ["key", "level1"],
-                        ["key", "level2"],
-                        ["key", "level3"],
-                        ["key", "level4"],
-                        ["key", "level5"],
-                        ["key", "target"],
-                    ],
+                    ["key", "level1"],
+                    ["key", "level2"],
+                    ["key", "level3"],
+                    ["key", "level4"],
+                    ["key", "level5"],
+                    ["key", "target"],
                 ],
-                "found",
             ],
-        )
-        assert isinstance(result, JafQuerySet)
+            "found",
+        ])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right objects (deep nested target: found)
@@ -675,10 +660,9 @@ class TestEdgeCases:
         )
 
         # Recursive wildcard search
-        result = jaf(
-            data, ["eq?", ["@", [["wc_recursive"], ["key", "target"]]], "found"]
-        )
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": data})
+        result = s.filter(["eq?", ["@", [["wc_recursive"], ["key", "target"]]], "found"])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right objects (recursive search for target: found)
@@ -700,8 +684,9 @@ class TestEdgeCases:
             )
 
         # Find active users (should be 50 users: 0, 2, 4, ..., 98)
-        result = jaf(large_data, ["eq?", ["@", [["key", "active"]]], True])
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": large_data})
+        result = s.filter(["eq?", ["@", [["key", "active"]]], True])
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right number of active users (50 total)
@@ -714,10 +699,9 @@ class TestEdgeCases:
         assert matching_ids == expected_ids
 
         # Find high scorers
-        result = jaf(
-            large_data, ["gt?", ["@", [["key", "score"]]], 900]
-        )  # 91*10 to 99*10 -> 910 to 990
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": large_data})
+        result = s.filter(["gt?", ["@", [["key", "score"]]], 900])  # 91*10 to 99*10 -> 910 to 990
+        assert isinstance(result, FilteredStream)
         # Evaluate to get actual matching objects
         matching_objects = list(result.evaluate())
         # Check we got the right number of high scorers (9 total: 91-99)

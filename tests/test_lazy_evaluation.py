@@ -4,8 +4,10 @@ These tests ensure the lazy evaluation system works correctly and covers edge ca
 """
 
 import pytest
-from jaf import jaf, jafError
-from jaf.result_set import JafQuerySet, JafQuerySetError
+from jaf.lazy_streams import stream, FilteredStream
+from jaf.jaf import jafError
+from jaf.exceptions import UnknownOperatorError, InvalidArgumentCountError
+from jaf.result_set import JafQuerySet, JafQuerySetError  # For compatibility during migration
 
 
 class TestLazyEvaluation:
@@ -35,10 +37,11 @@ class TestLazyEvaluation:
     def test_evaluate_basic_functionality(self):
         """Test basic evaluate() functionality"""
         query = ["eq?", ["@", [["key", "active"]]], True]
-        result = jaf(self.test_data, query)
+        s = stream({"type": "memory", "data": self.test_data})
+        result = s.filter(query)
 
         # Query creation should be instant (lazy)
-        assert isinstance(result, JafQuerySet)
+        assert isinstance(result, FilteredStream)
         assert result.query == query
 
         # Evaluation should return actual matching objects
@@ -50,7 +53,8 @@ class TestLazyEvaluation:
     def test_evaluate_is_repeatable(self):
         """Test that evaluate() can be called multiple times with same results"""
         query = ["gt?", ["@", [["key", "age"]]], 30]
-        result = jaf(self.test_data, query)
+        s = stream({"type": "memory", "data": self.test_data})
+        result = s.filter(query)
 
         # First evaluation
         first_eval = list(result.evaluate())
@@ -68,7 +72,8 @@ class TestLazyEvaluation:
     def test_evaluate_with_empty_results(self):
         """Test evaluate() when query matches nothing"""
         query = ["eq?", ["@", [["key", "name"]]], "Nobody"]
-        result = jaf(self.test_data, query)
+        s = stream({"type": "memory", "data": self.test_data})
+        result = s.filter(query)
 
         matching_objects = list(result.evaluate())
         assert len(matching_objects) == 0
@@ -77,7 +82,8 @@ class TestLazyEvaluation:
     def test_evaluate_with_empty_data(self):
         """Test evaluate() with empty data collection"""
         query = ["eq?", ["@", [["key", "name"]]], "Alice"]
-        result = jaf([], query)
+        s = stream({"type": "memory", "data": []})
+        result = s.filter(query)
 
         matching_objects = list(result.evaluate())
         assert len(matching_objects) == 0
@@ -91,7 +97,8 @@ class TestLazyEvaluation:
             ["gt?", ["@", [["key", "age"]]], 25],
             ["in?", "user", ["@", [["key", "tags"]]]],
         ]
-        result = jaf(self.test_data, query)
+        s = stream({"type": "memory", "data": self.test_data})
+        result = s.filter(query)
 
         matching_objects = list(result.evaluate())
         assert len(matching_objects) == 2  # Alice and Charlie
@@ -101,17 +108,18 @@ class TestLazyEvaluation:
     def test_evaluate_with_invalid_query_fails_clearly(self):
         """Test that evaluate() fails clearly for invalid queries"""
         query = ["unknown-operator", "arg"]
-        result = jaf(self.test_data, query)
+        s = stream({"type": "memory", "data": self.test_data})
+        result = s.filter(query)
 
         # Query creation should succeed (lazy)
-        assert isinstance(result, JafQuerySet)
+        assert isinstance(result, FilteredStream)
 
         # But evaluation should fail with clear error
         with pytest.raises(
-            JafQuerySetError,
-            match="Query evaluation failed: Unknown operator: unknown-operator",
+            UnknownOperatorError,
+            match="Unknown operator: unknown-operator",
         ):
-            list(list(result.evaluate()))
+            list(result.evaluate())
 
     def test_evaluate_with_malformed_data_handles_gracefully(self):
         """Test that evaluate() handles malformed data gracefully"""
@@ -125,7 +133,8 @@ class TestLazyEvaluation:
         ]
 
         query = ["eq?", ["@", [["key", "name"]]], "Bob"]
-        result = jaf(malformed_data, query)
+        s = stream({"type": "memory", "data": malformed_data})
+        result = s.filter(query)
 
         matching_objects = list(result.evaluate())
         assert len(matching_objects) == 1
@@ -140,7 +149,8 @@ class TestLazyEvaluation:
         ]
 
         query = ["gt?", ["@", [["key", "age"]]], 25]
-        result = jaf(data_with_missing_fields, query)
+        s = stream({"type": "memory", "data": data_with_missing_fields})
+        result = s.filter(query)
 
         # Should only match objects that have the field
         matching_objects = list(result.evaluate())
@@ -153,8 +163,9 @@ class TestLazyEvaluation:
         query1 = ["eq?", ["@", [["key", "active"]]], True]
         query2 = ["gt?", ["@", [["key", "age"]]], 30]
 
-        rs1 = jaf(self.test_data, query1)
-        rs2 = jaf(self.test_data, query2)
+        s = stream({"type": "memory", "data": self.test_data})
+        rs1 = s.filter(query1)
+        rs2 = s.filter(query2)
 
         # Test AND operation
         and_result = rs1.AND(rs2)
@@ -178,7 +189,8 @@ class TestLazyEvaluation:
     def test_evaluate_preserves_object_identity(self):
         """Test that evaluate() returns the original objects, not copies"""
         query = ["eq?", ["@", [["key", "name"]]], "Alice"]
-        result = jaf(self.test_data, query)
+        s = stream({"type": "memory", "data": self.test_data})
+        result = s.filter(query)
 
         matching_objects = list(result.evaluate())
         assert len(matching_objects) == 1
@@ -197,16 +209,14 @@ class TestLazyEvaluation:
             "description": "test data",
         }
 
-        result = jaf(
-            self.test_data,
-            query,
-            collection_id="test_collection",
-            collection_source=collection_source,
-        )
+        # For collection_source, we use it directly with stream
+        s = stream(collection_source)
+        result = s.filter(query)
+        result.collection_id = "test_collection"
 
         # Metadata should be preserved
         assert result.collection_id == "test_collection"
-        assert result.collection_source == collection_source
+        assert result.collection_source["type"] == "filter"  # Filter wraps the source
 
         # Evaluation should still work
         matching_objects = list(result.evaluate())
@@ -217,11 +227,13 @@ class TestLazyEvaluation:
         query = ["eq?", ["@", [["key", "name"]]], "Bob"]
 
         # This should create in-memory collection source
-        result = jaf(self.test_data, query)
+        s = stream({"type": "memory", "data": self.test_data})
+        result = s.filter(query)
 
-        # Should have in-memory collection source
-        assert result.collection_source["type"] == "memory"
-        assert result.collection_source["data"] == self.test_data
+        # Should have filter wrapping memory source
+        assert result.collection_source["type"] == "filter"
+        assert result.collection_source["inner_source"]["type"] == "memory"
+        assert result.collection_source["inner_source"]["data"] == self.test_data
 
         # Evaluation should work
         matching_objects = list(result.evaluate())
@@ -240,8 +252,9 @@ class TestEvaluatePerformance:
         query = ["gt?", ["@", [["key", "value"]]], 500]
 
         # Query creation should be instant (no actual filtering)
-        result = jaf(large_data, query)
-        assert isinstance(result, JafQuerySet)
+        s = stream({"type": "memory", "data": large_data})
+        result = s.filter(query)
+        assert isinstance(result, FilteredStream)
         assert result.query == query
 
         # Only evaluate() should do the work
@@ -255,7 +268,8 @@ class TestEvaluatePerformance:
         data = [{"id": i, "active": i % 2 == 0} for i in range(100)]
         query = ["eq?", ["@", [["key", "active"]]], True]
 
-        result = jaf(data, query)
+        s = stream({"type": "memory", "data": data})
+        result = s.filter(query)
 
         # Multiple evaluations should work
         eval1 = list(result.evaluate())

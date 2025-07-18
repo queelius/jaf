@@ -4,7 +4,7 @@ Tests both DSL parsing/compilation and integration with JAF evaluation.
 """
 
 import pytest
-from jaf import jaf
+from jaf.lazy_streams import stream
 from jaf.dsl_parser import DSLParser, DSLSyntaxError
 from jaf.dsl_compiler import DSLCompiler, compile_dsl, smart_compile, is_dsl_expression
 
@@ -338,8 +338,9 @@ class TestDSLIntegration:
         """Test DSL evaluation with basic expressions"""
         dsl = "@age > 30"
         ast = compile_dsl(dsl)
-        result = jaf(self.test_data, ast)
-        matches = list(list(result.evaluate()))
+        s = stream({"type": "memory", "data": self.test_data})
+        result = s.filter(ast)
+        matches = list(result.evaluate())
 
         assert len(matches) == 1
         assert matches[0]["name"] == "Charlie"
@@ -348,8 +349,9 @@ class TestDSLIntegration:
         """Test DSL evaluation with logical operations"""
         dsl = "@age > 25 and @active == true"
         ast = compile_dsl(dsl)
-        result = jaf(self.test_data, ast)
-        matches = list(list(result.evaluate()))
+        s = stream({"type": "memory", "data": self.test_data})
+        result = s.filter(ast)
+        matches = list(result.evaluate())
 
         assert len(matches) == 3  # Alice, Charlie, Diana
         names = {obj["name"] for obj in matches}
@@ -359,8 +361,9 @@ class TestDSLIntegration:
         """Test DSL evaluation with function calls"""
         dsl = 'contains(@tags, "admin")'
         ast = compile_dsl(dsl)
-        result = jaf(self.test_data, ast)
-        matches = list(list(result.evaluate()))
+        s = stream({"type": "memory", "data": self.test_data})
+        result = s.filter(ast)
+        matches = list(result.evaluate())
 
         assert len(matches) == 1
         assert matches[0]["name"] == "Alice"
@@ -369,8 +372,9 @@ class TestDSLIntegration:
         """Test DSL evaluation with string functions"""
         dsl = 'startswith(@name, "A")'
         ast = compile_dsl(dsl)
-        result = jaf(self.test_data, ast)
-        matches = list(list(result.evaluate()))
+        s = stream({"type": "memory", "data": self.test_data})
+        result = s.filter(ast)
+        matches = list(result.evaluate())
 
         assert len(matches) == 1
         assert matches[0]["name"] == "Alice"
@@ -379,8 +383,9 @@ class TestDSLIntegration:
         """Test DSL evaluation with complex expressions"""
         dsl = '@age >= 30 and (@active == true or contains(@tags, "premium"))'
         ast = compile_dsl(dsl)
-        result = jaf(self.test_data, ast)
-        matches = list(list(result.evaluate()))
+        s = stream({"type": "memory", "data": self.test_data})
+        result = s.filter(ast)
+        matches = list(result.evaluate())
 
         assert len(matches) == 2  # Alice and Charlie
         names = {obj["name"] for obj in matches}
@@ -391,7 +396,8 @@ class TestDSLIntegration:
         # DSL version
         dsl = "@age > 30 and @active == true"
         dsl_ast = compile_dsl(dsl)
-        dsl_result = list(jaf(self.test_data, dsl_ast).evaluate())
+        s1 = stream({"type": "memory", "data": self.test_data})
+        dsl_result = list(s1.filter(dsl_ast).evaluate())
 
         # Equivalent AST version
         ast = [
@@ -399,7 +405,8 @@ class TestDSLIntegration:
             ["gt?", ["@", [["key", "age"]]], 30],
             ["eq?", ["@", [["key", "active"]]], True],
         ]
-        ast_result = list(jaf(self.test_data, ast).evaluate())
+        s2 = stream({"type": "memory", "data": self.test_data})
+        ast_result = list(s2.filter(ast).evaluate())
 
         # Should produce identical results
         assert dsl_result == ast_result
@@ -413,8 +420,9 @@ class TestDSLIntegration:
 
         dsl = "@user.profile.age > 27 and @active == true"
         ast = compile_dsl(dsl)
-        result = jaf(nested_data, ast)
-        matches = list(list(result.evaluate()))
+        s = stream({"type": "memory", "data": nested_data})
+        result = s.filter(ast)
+        matches = list(result.evaluate())
 
         assert len(matches) == 1
         assert matches[0]["user"]["profile"]["name"] == "Alice"
@@ -424,7 +432,8 @@ class TestDSLIntegration:
         # Valid DSL that refers to non-existent field
         dsl = "@nonexistent_field > 10"
         ast = compile_dsl(dsl)
-        result = jaf(self.test_data, ast)
+        s = stream({"type": "memory", "data": self.test_data})
+        result = s.filter(ast)
 
         # Should not crash, just return no matches
         matches = list(list(result.evaluate()))

@@ -4,10 +4,11 @@ import json
 import logging
 import sys
 from typing import List, Dict, Optional, Union, Any
-from .jaf import jaf, jafError
-from .result_set import JafQuerySet, JafQuerySetError
+from .lazy_streams import stream, FilteredStream, MappedStream
+from .result_set import JafQuerySet, JafQuerySetError  # Keep for backward compatibility during transition
 from . import __version__
 from .jaf_eval import jaf_eval
+from .exceptions import JAFError
 from .io_utils import (
     walk_data_files,
     load_objects_from_file,
@@ -56,9 +57,7 @@ def main():
         help="Path to the input JSON/JSONL file or directory. Defaults to '-' to read from stdin.",
     )
     filter_parser.add_argument(
-        "-q",
-        "--query",
-        required=True,
+        "query",
         type=str,
         help="A JAF query string (in JSON format) to filter the data.",
     )
@@ -79,7 +78,164 @@ def main():
         "-l",
         "--lazy",
         action="store_true",
-        help="Output JafQuerySet JSON for later composition instead of actual matching objects.",
+        help="Output stream descriptor JSON for later composition instead of actual matching objects.",
+    )
+
+    # --- 'map' Subcommand ---
+    map_parser = subparsers.add_parser(
+        "map", help="Transform JSON/JSONL data using a JAF expression."
+    )
+    map_parser.add_argument(
+        "input_source",
+        type=str,
+        nargs="?",
+        default="-",
+        help="Path to the input JSON/JSONL file, directory, or stream descriptor. Defaults to '-' to read from stdin.",
+    )
+    map_parser.add_argument(
+        "expression",
+        type=str,
+        help="A JAF expression (in JSON format) to transform each item.",
+    )
+    map_parser.add_argument(
+        "-l",
+        "--lazy",
+        action="store_true",
+        help="Output stream descriptor JSON for later composition.",
+    )
+
+    # --- 'take' Subcommand ---
+    take_parser = subparsers.add_parser(
+        "take", help="Take the first N items from a data stream."
+    )
+    take_parser.add_argument(
+        "input_source",
+        type=str,
+        nargs="?",
+        default="-",
+        help="Path to the input JSON/JSONL file, directory, or stream descriptor.",
+    )
+    take_parser.add_argument(
+        "count",
+        type=int,
+        help="Number of items to take.",
+    )
+    take_parser.add_argument(
+        "-l",
+        "--lazy",
+        action="store_true",
+        help="Output stream descriptor JSON for later composition.",
+    )
+
+    # --- 'skip' Subcommand ---
+    skip_parser = subparsers.add_parser(
+        "skip", help="Skip the first N items from a data stream."
+    )
+    skip_parser.add_argument(
+        "input_source",
+        type=str,
+        nargs="?",
+        default="-",
+        help="Path to the input JSON/JSONL file, directory, or stream descriptor.",
+    )
+    skip_parser.add_argument(
+        "count",
+        type=int,
+        help="Number of items to skip.",
+    )
+    skip_parser.add_argument(
+        "-l",
+        "--lazy",
+        action="store_true",
+        help="Output stream descriptor JSON for later composition.",
+    )
+
+    # --- 'batch' Subcommand ---
+    batch_parser = subparsers.add_parser(
+        "batch", help="Group items into batches of specified size."
+    )
+    batch_parser.add_argument(
+        "input_source",
+        type=str,
+        nargs="?",
+        default="-",
+        help="Path to the input JSON/JSONL file, directory, or stream descriptor.",
+    )
+    batch_parser.add_argument(
+        "size",
+        type=int,
+        help="Size of each batch.",
+    )
+    batch_parser.add_argument(
+        "-l",
+        "--lazy",
+        action="store_true",
+        help="Output stream descriptor JSON for later composition.",
+    )
+
+    # --- 'stream' Subcommand ---
+    stream_parser = subparsers.add_parser(
+        "stream", help="Build and execute a stream processing pipeline with chained operations."
+    )
+    stream_parser.add_argument(
+        "input_source",
+        type=str,
+        nargs="?",
+        default="-",
+        help="Path to the input JSON/JSONL file, directory, or stream descriptor. Defaults to '-' to read from stdin.",
+    )
+    # Operations can be repeated and will be applied in order
+    stream_parser.add_argument(
+        "--filter", "-f",
+        action="append",
+        metavar="QUERY",
+        help="Filter with a JAF query. Can be used multiple times.",
+    )
+    stream_parser.add_argument(
+        "--map", "-m",
+        action="append",
+        metavar="EXPR",
+        help="Transform with a JAF expression. Can be used multiple times.",
+    )
+    stream_parser.add_argument(
+        "--take", "-t",
+        type=int,
+        metavar="N",
+        help="Take the first N items.",
+    )
+    stream_parser.add_argument(
+        "--skip", "-s",
+        type=int,
+        metavar="N",
+        help="Skip the first N items.",
+    )
+    stream_parser.add_argument(
+        "--batch", "-b",
+        type=int,
+        metavar="SIZE",
+        help="Group items into batches of SIZE.",
+    )
+    stream_parser.add_argument(
+        "--enumerate", "-e",
+        action="store_true",
+        help="Add index to each item.",
+    )
+    stream_parser.add_argument(
+        "--lazy", "-l",
+        action="store_true",
+        help="Output stream descriptor instead of evaluating.",
+    )
+
+    # --- 'eval' Subcommand ---
+    eval_parser = subparsers.add_parser(
+        "eval", help="Evaluate a lazy stream descriptor."
+    )
+    eval_parser.add_argument(
+        "input_source",
+        type=str,
+        nargs="?",
+        default="-",
+        help="Path to stream descriptor JSON file or '-' for stdin.",
     )
 
     # --- Boolean Algebra Subcommands ---
@@ -219,6 +375,18 @@ def main():
     # --- Command Dispatch ---
     if args.command == "filter":
         handle_filter_command(args)
+    elif args.command == "map":
+        handle_map_command(args)
+    elif args.command == "take":
+        handle_take_command(args)
+    elif args.command == "skip":
+        handle_skip_command(args)
+    elif args.command == "batch":
+        handle_batch_command(args)
+    elif args.command == "stream":
+        handle_stream_command(args)
+    elif args.command == "eval":
+        handle_eval_command(args)
     elif args.command == "resolve":
         handle_resolve_command(args)
     elif args.command in {"and", "or", "not", "xor", "difference"}:
@@ -339,21 +507,27 @@ def handle_filter_command(args):
         logger.info(
             f"Applying JAF query to {len(all_objects_to_filter)} aggregated items. Collection ID: {effective_collection_id}"
         )
-        result_set = jaf(
-            all_objects_to_filter,
-            query_ast,
-            collection_id=effective_collection_id,
-            collection_source=collection_source,
-        )
-
+        
+        # Create stream from the appropriate source
+        if collection_source.get("type") == "buffered_stdin":
+            # Use the buffered content directly
+            data_stream = stream({"type": "memory", "data": collection_source["content"]})
+        else:
+            # Use memory source with the loaded data
+            data_stream = stream({"type": "memory", "data": all_objects_to_filter})
+        
+        # Apply filter
+        result_stream = data_stream.filter(query_ast)
+        result_stream.collection_id = effective_collection_id
+        
         if args.lazy:
-            # Output JafQuerySet JSON for later composition
-            output_dict = result_set.to_dict()
-            # Always compact JSON for JafQuerySet output
+            # Output stream descriptor JSON for later composition
+            output_dict = result_stream.to_dict()
+            # Always compact JSON for stream output
             print(json.dumps(output_dict, indent=None, separators=(",", ":")))
         else:
             # Default: eager evaluation - output actual matching objects
-            matched_data = result_set.evaluate()
+            matched_data = list(result_stream.evaluate())
 
             if logger.isEnabledFor(logging.INFO):
                 print(f"--- Filtering Complete ---", file=sys.stderr)
@@ -374,7 +548,7 @@ def handle_filter_command(args):
 
             _print_objects_as_jsonl(matched_data)
 
-    except jafError as e_jaf:
+    except JAFError as e_jaf:
         logger.error(f"JAF Error processing: {e_jaf}", exc_info=True)
         print(f"JAF Error: {e_jaf}", file=sys.stderr)
         sys.exit(1)
@@ -384,6 +558,242 @@ def handle_filter_command(args):
             f"An unexpected error occurred during JAF processing: {e_proc}",
             file=sys.stderr,
         )
+        sys.exit(1)
+
+
+def handle_map_command(args):
+    """Handles the 'map' subcommand for transforming data."""
+    logger.debug(f"Map command with args: {args}")
+    
+    try:
+        # Parse the expression
+        expression_ast = smart_compile(args.expression)
+        logger.debug(f"Compiled expression to AST: {expression_ast}")
+    except (json.JSONDecodeError, DSLSyntaxError) as e:
+        logger.error(f"Invalid expression: {e}")
+        sys.exit(1)
+    
+    # Load input stream
+    input_stream = _load_input_stream(args.input_source)
+    
+    # Apply map transformation
+    result_stream = input_stream.map(expression_ast)
+    
+    if args.lazy:
+        # Output stream descriptor
+        print(json.dumps(result_stream.to_dict(), separators=(",", ":")))
+    else:
+        # Evaluate and output results
+        _print_objects_as_jsonl(list(result_stream.evaluate()))
+
+
+def handle_take_command(args):
+    """Handles the 'take' subcommand."""
+    logger.debug(f"Take command with args: {args}")
+    
+    # Load input stream
+    input_stream = _load_input_stream(args.input_source)
+    
+    # Apply take operation
+    result_stream = input_stream.take(args.count)
+    
+    if args.lazy:
+        # Output stream descriptor
+        print(json.dumps(result_stream.to_dict(), separators=(",", ":")))
+    else:
+        # Evaluate and output results
+        _print_objects_as_jsonl(list(result_stream.evaluate()))
+
+
+def handle_skip_command(args):
+    """Handles the 'skip' subcommand."""
+    logger.debug(f"Skip command with args: {args}")
+    
+    # Load input stream
+    input_stream = _load_input_stream(args.input_source)
+    
+    # Apply skip operation
+    result_stream = input_stream.skip(args.count)
+    
+    if args.lazy:
+        # Output stream descriptor
+        print(json.dumps(result_stream.to_dict(), separators=(",", ":")))
+    else:
+        # Evaluate and output results
+        _print_objects_as_jsonl(list(result_stream.evaluate()))
+
+
+def handle_batch_command(args):
+    """Handles the 'batch' subcommand."""
+    logger.debug(f"Batch command with args: {args}")
+    
+    # Load input stream
+    input_stream = _load_input_stream(args.input_source)
+    
+    # Apply batch operation
+    result_stream = input_stream.batch(args.size)
+    
+    if args.lazy:
+        # Output stream descriptor
+        print(json.dumps(result_stream.to_dict(), separators=(",", ":")))
+    else:
+        # Evaluate and output results
+        _print_objects_as_jsonl(list(result_stream.evaluate()))
+
+
+def _load_input_stream(input_source: str):
+    """Helper to load a stream from various input sources."""
+    if input_source == "-":
+        # Read from stdin
+        stdin_content = sys.stdin.read()
+        
+        # Try to parse as stream descriptor first
+        try:
+            stream_desc = json.loads(stdin_content)
+            if isinstance(stream_desc, dict) and "collection_source" in stream_desc:
+                # It's a stream descriptor
+                return stream(stream_desc["collection_source"])
+        except json.JSONDecodeError:
+            pass
+        
+        # Otherwise treat as data
+        loaded_objects, _ = load_objects_from_string(stdin_content)
+        return stream({"type": "memory", "data": loaded_objects})
+    
+    elif os.path.isfile(input_source):
+        # Check if it's a stream descriptor file
+        if input_source.endswith(".json"):
+            try:
+                with open(input_source, "r") as f:
+                    stream_desc = json.load(f)
+                if isinstance(stream_desc, dict) and "collection_source" in stream_desc:
+                    return stream(stream_desc["collection_source"])
+            except (json.JSONDecodeError, KeyError):
+                pass
+        
+        # Otherwise load as data file
+        return stream(input_source)
+    
+    elif os.path.isdir(input_source):
+        # Create a directory source
+        return stream({"type": "directory", "path": os.path.abspath(input_source)})
+    
+    else:
+        print(f"Error: Input source '{input_source}' not found.", file=sys.stderr)
+        sys.exit(1)
+
+
+def handle_stream_command(args):
+    """Handles the 'stream' subcommand for building pipelines."""
+    logger.debug(f"Stream command with args: {args}")
+    
+    # Load input stream
+    current_stream = _load_input_stream(args.input_source)
+    
+    # Track if we've entered lazy mode
+    is_lazy = args.lazy
+    
+    # Build the pipeline by applying operations in order
+    operations = []
+    
+    # Collect all operations with their types and arguments
+    if args.filter:
+        for query in args.filter:
+            operations.append(('filter', query))
+    
+    if args.map:
+        for expr in args.map:
+            operations.append(('map', expr))
+    
+    if args.take is not None:
+        operations.append(('take', args.take))
+    
+    if args.skip is not None:
+        operations.append(('skip', args.skip))
+    
+    if args.batch is not None:
+        operations.append(('batch', args.batch))
+    
+    if args.enumerate:
+        operations.append(('enumerate', None))
+    
+    # Apply operations in the order they were specified
+    # Note: argparse doesn't preserve the exact command line order for different argument types
+    # For now, we apply in a fixed order: filter, map, take, skip, batch, enumerate
+    # TODO: Consider using a custom action to preserve exact order
+    
+    for op_type, op_arg in operations:
+        if op_type == 'filter':
+            try:
+                query_ast = smart_compile(op_arg)
+                current_stream = current_stream.filter(query_ast)
+            except (json.JSONDecodeError, DSLSyntaxError) as e:
+                logger.error(f"Invalid filter query: {e}")
+                sys.exit(1)
+        
+        elif op_type == 'map':
+            try:
+                expr_ast = smart_compile(op_arg)
+                current_stream = current_stream.map(expr_ast)
+            except (json.JSONDecodeError, DSLSyntaxError) as e:
+                logger.error(f"Invalid map expression: {e}")
+                sys.exit(1)
+        
+        elif op_type == 'take':
+            current_stream = current_stream.take(op_arg)
+        
+        elif op_type == 'skip':
+            current_stream = current_stream.skip(op_arg)
+        
+        elif op_type == 'batch':
+            current_stream = current_stream.batch(op_arg)
+        
+        elif op_type == 'enumerate':
+            current_stream = current_stream.enumerate()
+    
+    # Output based on lazy flag
+    if is_lazy:
+        # Output stream descriptor
+        print(json.dumps(current_stream.to_dict(), separators=(",", ":")))
+    else:
+        # Evaluate and output results
+        try:
+            _print_objects_as_jsonl(list(current_stream.evaluate()))
+        except JAFError as e:
+            logger.error(f"Error evaluating stream: {e}")
+            sys.exit(1)
+
+
+def handle_eval_command(args):
+    """Handles the 'eval' subcommand to evaluate lazy streams."""
+    logger.debug(f"Eval command with args: {args}")
+    
+    # Load the stream descriptor
+    if args.input_source == "-":
+        stdin_content = sys.stdin.read()
+        try:
+            stream_desc = json.loads(stdin_content)
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON stream descriptor: {e}")
+            sys.exit(1)
+    else:
+        try:
+            with open(args.input_source, "r") as f:
+                stream_desc = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            logger.error(f"Error loading stream descriptor: {e}")
+            sys.exit(1)
+    
+    # Create stream from descriptor
+    if not isinstance(stream_desc, dict) or "collection_source" not in stream_desc:
+        logger.error("Invalid stream descriptor: missing collection_source")
+        sys.exit(1)
+    
+    try:
+        data_stream = stream(stream_desc["collection_source"])
+        _print_objects_as_jsonl(list(data_stream.evaluate()))
+    except JAFError as e:
+        logger.error(f"Error evaluating stream: {e}")
         sys.exit(1)
 
 
