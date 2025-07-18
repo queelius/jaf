@@ -13,3 +13,6 @@ dist
 
 # MkDocs
 site/
+
+dev
+venv

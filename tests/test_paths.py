@@ -1,8 +1,9 @@
 """
 Tests for JAF path system and wildcard functionality.
 """
+
 import pytest
-from jaf.jaf_eval import jaf_eval # Corrected import for jaf_eval
+from jaf.jaf_eval import jaf_eval  # Corrected import for jaf_eval
 from jaf.path_evaluation import eval_path, exists, is_valid_path_str
 from jaf.path_types import PathValues
 from jaf.path_exceptions import PathSyntaxError
@@ -18,32 +19,26 @@ class TestPathSystem:
                 "name": "Alice",
                 "email": "alice@example.com",
                 "active": True,
-                "profile": {
-                    "settings": {
-                        "theme": "dark"
-                    }
-                }
+                "profile": {"settings": {"theme": "dark"}},
             },
             "items": [
                 {"id": 1, "status": "done", "tags": ["urgent", "bug"]},
                 {"id": 2, "status": "pending", "tags": ["feature"]},
-                {"id": 3, "status": "done", "tags": ["enhancement"]}
+                {"id": 3, "status": "done", "tags": ["enhancement"]},
             ],
             "metadata": {
                 "version": "1.0",
                 "errors": [
                     {"type": "warning", "message": "deprecated"},
-                    {"type": "error", "message": "failed"}
-                ]
+                    {"type": "error", "message": "failed"},
+                ],
             },
             "mixed_list": [
                 {"type": "a", "value": 1},
                 "string_item",
-                {"type": "b", "value": 2}
+                {"type": "b", "value": 2},
             ],
-            "config": {
-                "global_setting": "enabled"
-            }
+            "config": {"global_setting": "enabled"},
         }
 
     def test_is_valid_path_str(self):
@@ -69,23 +64,36 @@ class TestPathSystem:
     def test_nested_path_access(self):
         """Test deeply nested path access"""
         # path: ["user", "profile", "settings", "theme"]
-        result = eval_path([["key", "user"], ["key", "profile"], ["key", "settings"], ["key", "theme"]], self.nested_data)
+        result = eval_path(
+            [
+                ["key", "user"],
+                ["key", "profile"],
+                ["key", "settings"],
+                ["key", "theme"],
+            ],
+            self.nested_data,
+        )
         assert result == "dark"
 
     def test_array_index_access(self):
         """Test array index access"""
         # path: ["items", 0, "status"]
-        result = eval_path([["key", "items"], ["index", 0], ["key", "status"]], self.nested_data)
+        result = eval_path(
+            [["key", "items"], ["index", 0], ["key", "status"]], self.nested_data
+        )
         assert result == "done"
 
         # path: ["items", 1, "id"]
-        result = eval_path([["key", "items"], ["index", 1], ["key", "id"]], self.nested_data)
+        result = eval_path(
+            [["key", "items"], ["index", 1], ["key", "id"]], self.nested_data
+        )
         assert result == 2
-        
-        # path: ["items", -1, "status"]
-        result = eval_path([["key", "items"], ["index", -1], ["key", "status"]], self.nested_data)
-        assert result == "done"
 
+        # path: ["items", -1, "status"]
+        result = eval_path(
+            [["key", "items"], ["index", -1], ["key", "status"]], self.nested_data
+        )
+        assert result == "done"
 
     def test_nonexistent_path(self):
         """Test accessing non-existent paths"""
@@ -96,28 +104,38 @@ class TestPathSystem:
         # path: ["user", "nonexistent"]
         result = eval_path([["key", "user"], ["key", "nonexistent"]], self.nested_data)
         assert result == []
-        
+
         # path: ["items", 5, "status"] (index out of bounds)
-        result = eval_path([["key", "items"], ["index", 5], ["key", "status"]], self.nested_data)
+        result = eval_path(
+            [["key", "items"], ["index", 5], ["key", "status"]], self.nested_data
+        )
         assert result == []
 
         # path: ["items", 0, "nonkey"] (key not in dict at index)
-        result = eval_path([["key", "items"], ["index", 0], ["key", "nonkey"]], self.nested_data)
+        result = eval_path(
+            [["key", "items"], ["index", 0], ["key", "nonkey"]], self.nested_data
+        )
         assert result == []
-        
+
         # path: ["items", -10, "status"] (negative index out of bounds)
-        result = eval_path([["key", "items"], ["index", -10], ["key", "status"]], self.nested_data)
+        result = eval_path(
+            [["key", "items"], ["index", -10], ["key", "status"]], self.nested_data
+        )
         assert result == []
 
     def test_wildcard_single_level(self):
         """Test single-level wildcard '*'"""
         # Get all item statuses
         # path: ["items", "*", "status"]
-        result = eval_path([["key", "items"], ["wc_level"], ["key", "status"]], self.nested_data)
+        result = eval_path(
+            [["key", "items"], ["wc_level"], ["key", "status"]], self.nested_data
+        )
         assert isinstance(result, PathValues)
-        assert set(result) == {"done", "pending"} # "done" appears twice, PathValues preserves duplicates if underlying data has them at different points
+        assert set(result) == {
+            "done",
+            "pending",
+        }  # "done" appears twice, PathValues preserves duplicates if underlying data has them at different points
         assert sorted(list(result)) == sorted(["done", "pending", "done"])
-
 
     def test_wildcard_recursive(self):
         """Test recursive wildcard '**'"""
@@ -132,21 +150,28 @@ class TestPathSystem:
 
     def test_wildcard_no_matches(self):
         """Test wildcard when no matches found"""
-        data = {"empty_dict": {}, "empty_list": [], "a": {"b": 1}} 
-        
-        result = eval_path([["key", "non_existent_key"], ["wc_level"], ["key", "anything"]], data)
-        assert result == [] # Specific path part fails before wildcard
+        data = {"empty_dict": {}, "empty_list": [], "a": {"b": 1}}
+
+        result = eval_path(
+            [["key", "non_existent_key"], ["wc_level"], ["key", "anything"]], data
+        )
+        assert result == []  # Specific path part fails before wildcard
 
         result = eval_path([["wc_recursive"], ["key", "nonexistent"]], self.nested_data)
-        assert isinstance(result, PathValues) # wc_recursive always implies multi-match potential
+        assert isinstance(
+            result, PathValues
+        )  # wc_recursive always implies multi-match potential
         assert list(result) == []
 
-
-        result_empty_dict = eval_path([["key", "empty_dict"], ["wc_level"], ["key", "key"]], data)
+        result_empty_dict = eval_path(
+            [["key", "empty_dict"], ["wc_level"], ["key", "key"]], data
+        )
         assert isinstance(result_empty_dict, PathValues)
         assert list(result_empty_dict) == []
-        
-        result_empty_list = eval_path([["key", "empty_list"], ["wc_level"], ["key", "key"]], data)
+
+        result_empty_list = eval_path(
+            [["key", "empty_list"], ["wc_level"], ["key", "key"]], data
+        )
         assert isinstance(result_empty_list, PathValues)
         assert list(result_empty_list) == []
 
@@ -164,15 +189,20 @@ class TestPathSystem:
         """Test root operator in various paths"""
 
         # Path: [["root"], ["key", "user"], ["key", "name"]] -> "Alice"
-        result = eval_path([["root"], ["key", "user"], ["key", "name"]], self.nested_data)
+        result = eval_path(
+            [["root"], ["key", "user"], ["key", "name"]], self.nested_data
+        )
         assert result == "Alice"
 
     def test_root_operator_evaluation_complex_paths(self):
         # Path: [["key", "user"], ["key", "profile"], ["root"], ["key", "items"], ["index", 0], ["key", "status"]] -> "done"
         path = [
-            ["key", "user"], ["key", "profile"], 
-            ["root"], 
-            ["key", "items"], ["index", 0], ["key", "status"]
+            ["key", "user"],
+            ["key", "profile"],
+            ["root"],
+            ["key", "items"],
+            ["index", 0],
+            ["key", "status"],
         ]
         result = eval_path(path, self.nested_data)
         assert result == "done"
@@ -180,9 +210,11 @@ class TestPathSystem:
     def test_root_operator_evaluation_alice_email(self):
         # Path: [["key", "items"], ["index", 0], ["root"], ["key", "user"], ["key", "email"]] -> "alice@example.com"
         path = [
-            ["key", "items"], ["index", 0],
+            ["key", "items"],
+            ["index", 0],
             ["root"],
-            ["key", "user"], ["key", "email"]
+            ["key", "user"],
+            ["key", "email"],
         ]
         result = eval_path(path, self.nested_data)
         assert result == "alice@example.com"
@@ -195,7 +227,12 @@ class TestPathSystem:
 
     def test_root_operator_evaluation_with_multi_roots_and_nonexistent_keys(self):
 
-        path_root_fail_root = [["root"], ["key", "nonexistent"], ["root"], ["key", "user"]]
+        path_root_fail_root = [
+            ["root"],
+            ["key", "nonexistent"],
+            ["root"],
+            ["key", "user"],
+        ]
         result = eval_path(path_root_fail_root, self.nested_data)
         assert result == []
 
@@ -207,7 +244,14 @@ class TestPathSystem:
 
         # Path: [["key", "user"], ["root"], ["key", "config"], ["root"], ["key", "items"], ["index", 1]]
         path_multiple_roots = [
-            ["key", "user"], ["root"], ["key", "config"], ["root"], ["root"], ["root"], ["key", "items"], ["index", 1]
+            ["key", "user"],
+            ["root"],
+            ["key", "config"],
+            ["root"],
+            ["root"],
+            ["root"],
+            ["key", "items"],
+            ["index", 1],
         ]
         result = eval_path(path_multiple_roots, self.nested_data)
         assert result == self.nested_data["items"][1]
@@ -215,76 +259,94 @@ class TestPathSystem:
     def test_path_special_form(self):
         """Test path special form in evaluator"""
         # path: ["user", "name"]
-        query = ["path", [["key", "user"], ["key", "name"]]]
+        query = ["@", [["key", "user"], ["key", "name"]]]
         result = jaf_eval.eval(query, self.nested_data)
         assert result == "Alice"
 
     def test_path_special_form_2(self):
         """Test path special form in evaluator"""
         # path: ["user", "name"]
-        query = ["path", [["key", "user"], ["key", "active"]]]
+        query = ["@", [["key", "user"], ["key", "active"]]]
         result = jaf_eval.eval(query, self.nested_data)
         assert result
-
 
     def test_exists_function(self):
         """Test exists? special form"""
         # Existing path
         # path: ["user", "email"]
-        query = ["exists?", ["path", [["key", "user"], ["key", "email"]]]]
+        query = ["exists?", ["@", [["key", "user"], ["key", "email"]]]]
         result = jaf_eval.eval(query, self.nested_data)
         assert result is True
 
         # Non-existing path
         # path: ["user", "phone"]
-        query = ["exists?", ["path", [["key", "user"], ["key", "phone"]]]]
+        query = ["exists?", ["@", [["key", "user"], ["key", "phone"]]]]
         result = jaf_eval.eval(query, self.nested_data)
         assert result is False
-        
+
         # Path to null/None (if it existed) should exist
         temp_data = {"a": None}
-        query_null = ["exists?", ["path", [["key", "a"]]]]
+        query_null = ["exists?", ["@", [["key", "a"]]]]
         assert jaf_eval.eval(query_null, temp_data) is True
-
 
     def test_exists_with_wildcards(self):
         """Test exists? with wildcard paths"""
         # Check if any item has status field
         # path: ["items", "*", "status"]
-        query = ["exists?", ["path", [["key", "items"], ["wc_level"], ["key", "status"]]]]
+        query = ["exists?", ["@", [["key", "items"], ["wc_level"], ["key", "status"]]]]
         result = jaf_eval.eval(query, self.nested_data)
         assert result is True
 
         # Check for non-existent field with wildcard
         # path: ["items", "*", "nonexistent"]
-        query = ["exists?", ["path", [["key", "items"], ["wc_level"], ["key", "nonexistent"]]]]
+        query = [
+            "exists?",
+            ["@", [["key", "items"], ["wc_level"], ["key", "nonexistent"]]],
+        ]
         result = jaf_eval.eval(query, self.nested_data)
-        assert result is False 
+        assert result is False
 
     def test_path_argument_validation_in_eval_path(self):
         """Test path argument validation directly with eval_path for PathSyntaxError"""
-        with pytest.raises(PathSyntaxError, match="Path expression must be a list of components."):
-            eval_path("not.a.list", self.nested_data) # type: ignore
+        with pytest.raises(
+            PathSyntaxError, match="Path expression must be a list of components."
+        ):
+            eval_path("not.a.list", self.nested_data)  # type: ignore
 
-        with pytest.raises(PathSyntaxError, match="Each path component must be a non-empty list starting with an operation string."):
-            eval_path([["key", "user"], "not-a-component-list"], self.nested_data) # type: ignore
-        
-        with pytest.raises(PathSyntaxError, match="Each path component must be a non-empty list starting with an operation string."):
-            eval_path([123], self.nested_data) # type: ignore
+        with pytest.raises(
+            PathSyntaxError,
+            match="Each path component must be a non-empty list starting with an operation string.",
+        ):
+            eval_path([["key", "user"], "not-a-component-list"], self.nested_data)  # type: ignore
 
-        with pytest.raises(PathSyntaxError, match="Each path component must be a non-empty list starting with an operation string."):
+        with pytest.raises(
+            PathSyntaxError,
+            match="Each path component must be a non-empty list starting with an operation string.",
+        ):
+            eval_path([123], self.nested_data)  # type: ignore
+
+        with pytest.raises(
+            PathSyntaxError,
+            match="Each path component must be a non-empty list starting with an operation string.",
+        ):
             eval_path([[]], self.nested_data)
 
-        with pytest.raises(PathSyntaxError, match="Each path component must be a non-empty list starting with an operation string."):
-            eval_path([[123, "arg"]], self.nested_data) # type: ignore
-        
-        # These internal errors are caught by _match_recursive
-        with pytest.raises(PathSyntaxError, match="Unknown path operation: 'unknown_op'"):
-            eval_path([["unknown_op", "arg"]], self.nested_data)
-        
-        with pytest.raises(PathSyntaxError, match="'key' operation expects a single string argument."):
-            eval_path([["key", 123]], self.nested_data) # type: ignore
+        with pytest.raises(
+            PathSyntaxError,
+            match="Each path component must be a non-empty list starting with an operation string.",
+        ):
+            eval_path([[123, "arg"]], self.nested_data)  # type: ignore
 
+        # These internal errors are caught by _match_recursive
+        with pytest.raises(
+            PathSyntaxError, match="Unknown path operation: 'unknown_op'"
+        ):
+            eval_path([["unknown_op", "arg"]], self.nested_data)
+
+        with pytest.raises(
+            PathSyntaxError, match="'key' operation expects a single string argument."
+        ):
+            eval_path([["key", 123]], self.nested_data)  # type: ignore
 
     def test_empty_path_components(self):
         """Test empty path returns root object"""
@@ -303,22 +365,28 @@ class TestPathSystem:
         result = eval_path([["key", "arr"], ["indices", [4, 2, 0]]], data)
         assert isinstance(result, PathValues)
         assert result == ["e", "c", "a"]
-        
+
         # path: ["items", ["indices", [0,2]], "tags"]
-        result = eval_path([["key", "items"], ["indices", [0,2]], ["key", "tags"]], self.nested_data)
+        result = eval_path(
+            [["key", "items"], ["indices", [0, 2]], ["key", "tags"]], self.nested_data
+        )
         assert isinstance(result, PathValues)
-        assert result == [["urgent", "bug"], ["enhancement"]] 
+        assert result == [["urgent", "bug"], ["enhancement"]]
 
         # path: ["items", ["indices", [0,2]], "tags", 0]
-        result = eval_path([["key", "items"], ["indices", [0,2]], ["key", "tags"], ["index", 0]], self.nested_data)
+        result = eval_path(
+            [["key", "items"], ["indices", [0, 2]], ["key", "tags"], ["index", 0]],
+            self.nested_data,
+        )
         assert isinstance(result, PathValues)
         assert result == ["urgent", "enhancement"]
-        
+
         # Indices out of bounds
-        result = eval_path([["key", "items"], ["indices", [0, 10]]], self.nested_data) # 10 is out of bounds
+        result = eval_path(
+            [["key", "items"], ["indices", [0, 10]]], self.nested_data
+        )  # 10 is out of bounds
         assert isinstance(result, PathValues)
         assert result == [self.nested_data["items"][0]]
-
 
     def test_slice_access(self):
         """Test path access using list slicing ['slice', start, stop, step]"""
@@ -334,37 +402,38 @@ class TestPathSystem:
         assert result == ["a", "c", "e"]
 
         # path: ["arr", ["slice", 3, None, None]] -> arr[3:] -> ["d", "e", "f"]
-        result = eval_path([["key", "arr"], ["slice", 3, None, None]], data) 
+        result = eval_path([["key", "arr"], ["slice", 3, None, None]], data)
         assert isinstance(result, PathValues)
         assert result == ["d", "e", "f"]
 
         # path: ["items", ["slice", 0, 2, 1], "status"]
-        result = eval_path([["key", "items"], ["slice", 0, 2, 1], ["key", "status"]], self.nested_data)
+        result = eval_path(
+            [["key", "items"], ["slice", 0, 2, 1], ["key", "status"]], self.nested_data
+        )
         assert isinstance(result, PathValues)
         assert result == ["done", "pending"]
-        
+
         # Slice yielding empty list
-        result = eval_path([["key", "arr"], ["slice", 5, 2, 1]], data) # start > stop
+        result = eval_path([["key", "arr"], ["slice", 5, 2, 1]], data)  # start > stop
         assert isinstance(result, PathValues)
         assert result == []
-
 
     def test_regex_key_access(self):
         """Test path access using regex key matching ['regex_key', pattern]"""
         data = {
             "user_alice": {"id": 1, "status": "active"},
             "user_bob": {"id": 2, "status": "inactive"},
-            "item_1": {"id": 3, "status": "pending"}
+            "item_1": {"id": 3, "status": "pending"},
         }
         # path: [["regex_key", "^user_.*"], "status"]
         result = eval_path([["regex_key", "^user_.*"], ["key", "status"]], data)
         assert isinstance(result, PathValues)
-        assert set(result) == {"active", "inactive"} 
+        assert set(result) == {"active", "inactive"}
 
         # path: [["regex_key", ".*_bob"], "id"]
         result = eval_path([["regex_key", ".*_bob"], ["key", "id"]], data)
-        assert isinstance(result, PathValues) 
-        assert result == [2] 
+        assert isinstance(result, PathValues)
+        assert result == [2]
 
     def test_regex_key_no_match(self):
         """Test regex key matching with no matches"""
@@ -373,30 +442,36 @@ class TestPathSystem:
         result = eval_path([["regex_key", "^item_.*"]], data)
         assert isinstance(result, PathValues)
         assert result == []
-        
-        with pytest.raises(PathSyntaxError, match="'regex_key' operation: invalid regex pattern"):
-            eval_path([["regex_key", "["]], data)
 
+        with pytest.raises(
+            PathSyntaxError, match="'regex_key' operation: invalid regex pattern"
+        ):
+            eval_path([["regex_key", "["]], data)
 
     def test_mixed_component_types(self):
         """Test paths combining various new component types"""
         result = eval_path(
             [["key", "items"], ["slice", 0, 2, 1], ["key", "tags"], ["index", 0]],
-            self.nested_data
+            self.nested_data,
         )
         assert isinstance(result, PathValues)
         assert result == ["urgent", "feature"]
 
         result = eval_path(
-            [["key", "metadata"], ["regex_key", "err.*"], ["index", 0], ["key", "message"]],
-            self.nested_data
+            [
+                ["key", "metadata"],
+                ["regex_key", "err.*"],
+                ["index", 0],
+                ["key", "message"],
+            ],
+            self.nested_data,
         )
         assert isinstance(result, PathValues)
-        assert result == ["deprecated"] 
+        assert result == ["deprecated"]
 
         result = eval_path(
             [["key", "items"], ["indices", [0, 2]], ["key", "tags"], ["wc_level"]],
-            self.nested_data
+            self.nested_data,
         )
         assert isinstance(result, PathValues)
         assert set(result) == {"urgent", "bug", "enhancement"}
@@ -409,18 +484,16 @@ class TestWildcardEdgeCases:
         """Test combining * and ** wildcards"""
         data = {
             "categories": {
-                "tech": {
-                    "items": [{"name": "laptop"}, {"name": "phone"}]
-                },
-                "books": {
-                    "items": [{"name": "novel"}, {"name": "manual"}]
-                }
+                "tech": {"items": [{"name": "laptop"}, {"name": "phone"}]},
+                "books": {"items": [{"name": "novel"}, {"name": "manual"}]},
             }
         }
         path = [
-            ["key", "categories"], ["wc_level"], 
-            ["key", "items"], ["wc_level"], 
-            ["key", "name"]
+            ["key", "categories"],
+            ["wc_level"],
+            ["key", "items"],
+            ["wc_level"],
+            ["key", "name"],
         ]
         result = eval_path(path, data)
         assert isinstance(result, PathValues)
@@ -432,7 +505,7 @@ class TestWildcardEdgeCases:
             "items": [
                 {"id": "A", "value": 100},
                 {"id": "B", "value": 200},
-                {"id": "C", "value": 300}
+                {"id": "C", "value": 300},
             ]
         }
         result_items = eval_path([["key", "items"], ["wc_level"]], data)
@@ -445,19 +518,12 @@ class TestWildcardEdgeCases:
     def test_scoped_wc_recursive_in_dict(self):
         """Test recursive wildcard scoped within a dictionary key."""
         data = {
-            "a": {
-                "target": 1,
-                "b": {
-                    "target": 2,
-                    "c": {
-                        "d": 3, 
-                        "target": 4
-                    }
-                }
-            },
-            "target": 5, 
+            "a": {"target": 1, "b": {"target": 2, "c": {"d": 3, "target": 4}}},
+            "target": 5,
         }
-        result_a_recursive = eval_path([["key", "a"], ["wc_recursive"], ["key", "target"]], data)
+        result_a_recursive = eval_path(
+            [["key", "a"], ["wc_recursive"], ["key", "target"]], data
+        )
         assert isinstance(result_a_recursive, PathValues)
         assert len(result_a_recursive) == 3
         assert set(result_a_recursive) == {1, 2, 4}
@@ -469,43 +535,46 @@ class TestWildcardEdgeCases:
             "sections": [
                 {"name": "s1", "target": 100},
                 {"name": "s2", "content": {"text": "hello", "target": 200}},
-                {"name": "s3", "items": [{"id": "i1"}, {"id": "i2", "target": 300}]}
+                {"name": "s3", "items": [{"id": "i1"}, {"id": "i2", "target": 300}]},
             ],
-            "metadata": {"target": 400} 
+            "metadata": {"target": 400},
         }
-        result_sections_recursive = eval_path([["key", "sections"], ["wc_recursive"], ["key", "target"]], data)
+        result_sections_recursive = eval_path(
+            [["key", "sections"], ["wc_recursive"], ["key", "target"]], data
+        )
         assert isinstance(result_sections_recursive, PathValues)
         assert len(result_sections_recursive) == 3
         assert set(result_sections_recursive) == {100, 200, 300}
 
     def test_wc_recursive_then_accessor(self):
         """Test recursive wildcard followed by an accessor like index."""
-        data = {
-            "a": {"list": [10, 20, {"list": [30, 40]}]},
-            "b": {"list": [50, 60]}
-        }
+        data = {"a": {"list": [10, 20, {"list": [30, 40]}]}, "b": {"list": [50, 60]}}
         # Path: **.list[0]
         result = eval_path([["wc_recursive"], ["key", "list"], ["index", 0]], data)
         assert isinstance(result, PathValues)
-        assert set(result) == {10, 30, 50} # Collects the first item of every 'list' found
+        assert set(result) == {
+            10,
+            30,
+            50,
+        }  # Collects the first item of every 'list' found
 
     def test_wc_level_then_accessor(self):
         """Test level wildcard followed by an accessor like index."""
         data = {
-            "level1_a": {"list_a": [1,2], "name": "obj_a"},
-            "level1_b": {"list_b": [3,4], "name": "obj_b"},
-            "level1_c": [5,6] # A list directly
+            "level1_a": {"list_a": [1, 2], "name": "obj_a"},
+            "level1_b": {"list_b": [3, 4], "name": "obj_b"},
+            "level1_c": [5, 6],  # A list directly
         }
         # Path: *.[index:0] (get first element of any list at the first level of values)
         # This is a bit ambiguous. If wc_level matches a list, then index 0 applies.
         # If wc_level matches a dict, then index 0 on dict fails.
         # The current implementation of wc_level iterates values of dicts or items of lists.
         # So, if a value is a list, then [index,0] applies to it.
-        
+
         # Path: *.list_a[0] - this is more specific
         # This would be [["wc_level"], ["key", "list_a"], ["index", 0]]
         # This would only match if a top-level key has a "list_a"
-        
+
         # Let's test: Get the first item of any list found under any key at the first level.
         # Path: *[*][0] - this is not how JAF paths are structured.
         # Path: *[0] - if the value matched by * is a list.

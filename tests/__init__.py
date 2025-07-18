@@ -15,5 +15,5 @@ __all__ = [
     "test_builtins",
     "test_path_evaluation",
     "test_console_script",
-    "test_result_set"
+    "test_result_set",
 ]

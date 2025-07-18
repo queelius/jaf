@@ -23,13 +23,13 @@ True
 
 Supported operations
 --------------------
-``key``           – dotted bare-word keys  
-``index``         – single zero-based index  ``[7]``  
-``indices``       – list of indices          ``[1,4,5]``  
-``slice``         – Python slice             ``[start:stop[:step]]``  
-``wc_level``      – level wildcard           ``[*]``  
-``wc_recursive``  – recursive wildcard       ``**``  
-``regex_key``     – regex key                ``~/pattern/``  
+``key``           – dotted bare-word keys
+``index``         – single zero-based index  ``[7]``
+``indices``       – list of indices          ``[1,4,5]``
+``slice``         – Python slice             ``[start:stop[:step]]``
+``wc_level``      – level wildcard           ``[*]``
+``wc_recursive``  – recursive wildcard       ``**``
+``regex_key``     – regex key                ``~/pattern/``
 ``root``          – explicit root            ``#``
 
 Any syntax error raises a ``PathSyntaxError`` that carries the offending
@@ -47,6 +47,7 @@ from .path_exceptions import PathSyntaxError
 # ---------------------------------------------------------------------------
 # AST → string
 # ---------------------------------------------------------------------------
+
 
 def _format_slice_part(part: Optional[int]) -> str:
     """Render a slice endpoint (`None` → empty string)."""
@@ -83,7 +84,7 @@ def path_ast_to_string(path_ast: List[List[Any]]) -> str:
     for i, node in enumerate(path_ast):
         if not (isinstance(node, list) and node):
             raise PathSyntaxError(
-                "Invalid AST component format: expected a non-empty list.", # Updated message
+                "Invalid AST component format: expected a non-empty list.",  # Updated message
                 path_segment=node,
                 full_path_ast=path_ast,
             )
@@ -93,68 +94,108 @@ def path_ast_to_string(path_ast: List[List[Any]]) -> str:
         # ------------------------------------------------------------------
         if op == "key":
             if not (len(args) == 1 and isinstance(args[0], str)):
-                raise PathSyntaxError("'key' operation expects a single string argument.", path_segment=node, full_path_ast=path_ast) # Updated message
+                raise PathSyntaxError(
+                    "'key' operation expects a single string argument.",
+                    path_segment=node,
+                    full_path_ast=path_ast,
+                )  # Updated message
             if i > 0:
                 result.append(".")
             result.append(args[0])
 
         elif op == "index":
             if not (len(args) == 1 and isinstance(args[0], int)):
-                raise PathSyntaxError("'index' operation expects a single integer argument.", path_segment=node, full_path_ast=path_ast) # Updated message
+                raise PathSyntaxError(
+                    "'index' operation expects a single integer argument.",
+                    path_segment=node,
+                    full_path_ast=path_ast,
+                )  # Updated message
             result.append(f"[{args[0]}]")
 
         elif op == "indices":
-            if not (len(args) == 1 and isinstance(args[0], list) and all(isinstance(x, int) for x in args[0])):
-                raise PathSyntaxError("'indices' operation expects a single list of integers argument.", path_segment=node, full_path_ast=path_ast) # Updated message
+            if not (
+                len(args) == 1
+                and isinstance(args[0], list)
+                and all(isinstance(x, int) for x in args[0])
+            ):
+                raise PathSyntaxError(
+                    "'indices' operation expects a single list of integers argument.",
+                    path_segment=node,
+                    full_path_ast=path_ast,
+                )  # Updated message
             result.append("[" + ",".join(map(str, args[0])) + "]")
 
         elif op == "slice":
-            if not (1 <= len(args) <= 3 and all(isinstance(x, (int, type(None))) for x in args)):
+            if not (
+                1 <= len(args) <= 3
+                and all(isinstance(x, (int, type(None))) for x in args)
+            ):
                 raise PathSyntaxError(
-                    "'slice' operation expects 1 to 3 integer or None arguments", # Matches test
-                    path_segment=node, full_path_ast=path_ast
+                    "'slice' operation expects 1 to 3 integer or None arguments",  # Matches test
+                    path_segment=node,
+                    full_path_ast=path_ast,
                 )
-            
+
             start = args[0]
-            stop  = args[1] if len(args) >= 2 else None
-            step_val  = args[2] if len(args) == 3 else None
+            stop = args[1] if len(args) >= 2 else None
+            step_val = args[2] if len(args) == 3 else None
 
             if step_val == 0:
-                raise PathSyntaxError("Slice step cannot be zero.", path_segment=node, full_path_ast=path_ast)
-            
+                raise PathSyntaxError(
+                    "Slice step cannot be zero.",
+                    path_segment=node,
+                    full_path_ast=path_ast,
+                )
+
             s_start, s_stop = _format_slice_part(start), _format_slice_part(stop)
             if start is None and stop is None and (step_val is None or step_val == 1):
                 txt = "[:]"
             elif step_val is None or step_val == 1:
                 txt = f"[{s_start}:{s_stop}]"
-            else: 
+            else:
                 txt = f"[{s_start}:{s_stop}:{_format_slice_part(step_val)}]"
             result.append(txt)
 
         elif op == "wc_level":
             if args:
-                raise PathSyntaxError("'wc_level' operation expects no arguments.", path_segment=node, full_path_ast=path_ast) # Updated message
+                raise PathSyntaxError(
+                    "'wc_level' operation expects no arguments.",
+                    path_segment=node,
+                    full_path_ast=path_ast,
+                )  # Updated message
             result.append("[*]")
 
         elif op == "wc_recursive":
             if args:
-                raise PathSyntaxError("'wc_recursive' operation expects no arguments.", path_segment=node, full_path_ast=path_ast) # Updated message
+                raise PathSyntaxError(
+                    "'wc_recursive' operation expects no arguments.",
+                    path_segment=node,
+                    full_path_ast=path_ast,
+                )  # Updated message
             if i > 0:
                 result.append(".")
             result.append("**")
 
         elif op == "regex_key":
             if not (1 <= len(args) <= 2):
-                raise PathSyntaxError("'regex_key' operation expects 1 or 2 arguments.", path_segment=node, full_path_ast=path_ast)
+                raise PathSyntaxError(
+                    "'regex_key' operation expects 1 or 2 arguments.",
+                    path_segment=node,
+                    full_path_ast=path_ast,
+                )
             if not isinstance(args[0], str):
-                raise PathSyntaxError("'regex_key' operation expects a string pattern argument.", path_segment=node, full_path_ast=path_ast)
-            
+                raise PathSyntaxError(
+                    "'regex_key' operation expects a string pattern argument.",
+                    path_segment=node,
+                    full_path_ast=path_ast,
+                )
+
             if i > 0:
                 result.append(".")
-            
+
             pattern = args[0]
             result.append(f"~/{pattern}/")
-            
+
             # Add flags if specified
             if len(args) == 2:
                 flags_arg = args[1]
@@ -178,13 +219,21 @@ def path_ast_to_string(path_ast: List[List[Any]]) -> str:
 
         elif op == "root":
             if args:
-                raise PathSyntaxError("'root' operation expects no arguments.", path_segment=node, full_path_ast=path_ast) # Updated message
+                raise PathSyntaxError(
+                    "'root' operation expects no arguments.",
+                    path_segment=node,
+                    full_path_ast=path_ast,
+                )  # Updated message
             if i > 0:
                 result.append(".")
             result.append("#")
 
         else:
-            raise PathSyntaxError(f"Unknown JAF path component operation: '{op}'", path_segment=node, full_path_ast=path_ast) # Updated message
+            raise PathSyntaxError(
+                f"Unknown JAF path component operation: '{op}'",
+                path_segment=node,
+                full_path_ast=path_ast,
+            )  # Updated message
     return "".join(result)
 
 
@@ -197,22 +246,23 @@ def path_ast_to_string(path_ast: List[List[Any]]) -> str:
 # ---------------------------------------------------------------------------
 
 # Regex for a valid Python/JSON-like identifier (key name)
-_IDENT_RE  = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 # Regex for parsing slice components: [start:stop:step]
-_INT_RE    = re.compile(r"[+-]?\d+")
-_SLICE_RE  = re.compile(
+_INT_RE = re.compile(r"[+-]?\d+")
+_SLICE_RE = re.compile(
     r"^\s*"
     r"(?P<start>[+-]?\d+)?"  # Optional start
-    r"\s*:\s*"               # First colon, surrounded by optional spaces
-    r"(?P<stop>[+-]?\d+)?"   # Optional stop
-    r"(?:"                   # Non-capturing group for the optional third part (step)
-        r"\s*:\s*"           # Second colon, surrounded by optional spaces
-        r"(?P<step>[+-]?\d+)?" # Optional step value
-    r")?"                    # The entire third part (second colon and step value) is optional
+    r"\s*:\s*"  # First colon, surrounded by optional spaces
+    r"(?P<stop>[+-]?\d+)?"  # Optional stop
+    r"(?:"  # Non-capturing group for the optional third part (step)
+    r"\s*:\s*"  # Second colon, surrounded by optional spaces
+    r"(?P<step>[+-]?\d+)?"  # Optional step value
+    r")?"  # The entire third part (second colon and step value) is optional
     r"\s*$",
     re.X,
 )
+
 
 def _parse_int(tok: str, ctx: str) -> int:
     if not _INT_RE.fullmatch(tok.strip()):
@@ -261,9 +311,9 @@ def string_to_path_ast(path: str) -> List[List[Any]]:
             ast.append(["wc_level"])
             eat_dot()
             continue
-        
+
         # --- level wildcard "*" (implicit form) -------------------------
-        if ch == '*':
+        if ch == "*":
             ast.append(["wc_level"])
             pos += 1
             eat_dot()
@@ -274,39 +324,47 @@ def string_to_path_ast(path: str) -> List[List[Any]]:
             close = path.find("]", pos)
             if close == -1:
                 raise PathSyntaxError("Unterminated '['", path_segment=path[pos:])
-            inside = path[pos + 1 : close] # Keep original spacing for colon counting
+            inside = path[pos + 1 : close]  # Keep original spacing for colon counting
             ctx_seg = path[pos : close + 1]
             pos = close + 1
 
             if ":" in inside:
                 # slice
                 # Use inside.strip() for matching with _SLICE_RE, which handles internal/external whitespace.
-                m = _SLICE_RE.match(inside.strip()) 
+                m = _SLICE_RE.match(inside.strip())
                 if not m:
                     raise PathSyntaxError("Malformed slice", path_segment=ctx_seg)
-                
+
                 start_str = m.group("start")
                 stop_str = m.group("stop")
                 step_str = m.group("step")
 
                 parsed_start = int(start_str) if start_str else None
                 parsed_stop = int(stop_str) if stop_str else None
-                
+
                 # Canonicalization based on "Expected AST" and user feedback:
                 # - Omitted start becomes 0.
                 # - Omitted stop remains None.
                 final_start = 0 if parsed_start is None else parsed_start
-                final_stop = parsed_stop # Corrected: if parsed_stop is None, final_stop is None
+                final_stop = (
+                    parsed_stop  # Corrected: if parsed_stop is None, final_stop is None
+                )
 
-                if step_str is not None: # Implies two colons were structurally present in the input
-                    parsed_step = int(step_str) if step_str else None # Handles "::" where step_str is ""
-                    
-                    if parsed_step is not None: # An actual integer step value was provided (e.g., [::2], [1:2:3])
+                if (
+                    step_str is not None
+                ):  # Implies two colons were structurally present in the input
+                    parsed_step = (
+                        int(step_str) if step_str else None
+                    )  # Handles "::" where step_str is ""
+
+                    if (
+                        parsed_step is not None
+                    ):  # An actual integer step value was provided (e.g., [::2], [1:2:3])
                         ast.append(["slice", final_start, final_stop, parsed_step])
-                    else: # Two colons were present, but step value was omitted (e.g., [::], [1:2:])
-                          # Expected AST for these cases is a 2-argument slice.
+                    else:  # Two colons were present, but step value was omitted (e.g., [::], [1:2:])
+                        # Expected AST for these cases is a 2-argument slice.
                         ast.append(["slice", final_start, final_stop])
-                else: # Only one colon was present in the input (e.g., [:], [1:], [:5], [1:5])
+                else:  # Only one colon was present in the input (e.g., [:], [1:], [:5], [1:5])
                     ast.append(["slice", final_start, final_stop])
             elif "," in inside:
                 # indices
@@ -314,7 +372,7 @@ def string_to_path_ast(path: str) -> List[List[Any]]:
                 ast.append(["indices", ints])
             else:
                 # single index
-                if not inside.strip(): # Handles "[]"
+                if not inside.strip():  # Handles "[]"
                     raise PathSyntaxError("Expected integer", path_segment=ctx_seg)
                 ast.append(["index", _parse_int(inside.strip(), ctx_seg)])
 
@@ -325,7 +383,9 @@ def string_to_path_ast(path: str) -> List[List[Any]]:
         if eat("~/"):
             end = path.find("/", pos)
             if end == -1:
-                raise PathSyntaxError("Unterminated regex key", path_segment=path[pos - 2 :])
+                raise PathSyntaxError(
+                    "Unterminated regex key", path_segment=path[pos - 2 :]
+                )
             pattern = path[pos:end]
             ast.append(["regex_key", pattern])
             pos = end + 1
@@ -333,7 +393,7 @@ def string_to_path_ast(path: str) -> List[List[Any]]:
             continue
 
         # --- bareword key -------------------------------------------------
-        m = _IDENT_RE.match(path, pos) # _IDENT_RE no longer matches '*'
+        m = _IDENT_RE.match(path, pos)  # _IDENT_RE no longer matches '*'
         if m:
             ast.append(["key", m.group(0)])
             pos = m.end()
@@ -349,94 +409,89 @@ def string_to_path_ast(path: str) -> List[List[Any]]:
 
 def path_expression_to_ast(path_expr):
     """
-    Convert a path expression (string or @ syntax) to path AST format.
-    
+    Convert a path expression to path AST format.
+
     Args:
         path_expr: Can be:
-            - String path: "user.name" 
             - @ string: "@user.name"
             - Path AST: [["key", "user"], ["key", "name"]]
-            - @ AST form: ["@", [["key", "user"], ["key", "name"]]]
-            
+
     Returns:
         Standardized path AST: [["key", "user"], ["key", "name"]]
     """
     if isinstance(path_expr, str):
-        if path_expr.startswith('@'):
+        if path_expr.startswith("@"):
             # Handle @string format
             path_string = path_expr[1:]  # Remove @
             if not path_string:
                 raise PathSyntaxError("Empty path expression after @")
             return string_to_path_ast(path_string)
         else:
-            # Handle regular string format
-            return string_to_path_ast(path_expr)
-    
+            raise PathSyntaxError(
+                "String paths must start with @. Use '@user.name' instead of 'user.name'"
+            )
+
     elif isinstance(path_expr, list):
-        if len(path_expr) == 2 and path_expr[0] == "@":
-            # Handle ["@", path_ast] format
-            path_ast = path_expr[1]
-            if not isinstance(path_ast, list):
-                raise PathSyntaxError("@ with AST form requires list of path components")
-            return path_ast  # Already in AST format, just return it
-        else:
-            # Assume it's already a path AST
-            return path_expr
-    
+        # Assume it's already a path AST
+        return path_expr
+
     else:
         raise PathSyntaxError(f"Invalid path expression type: {type(path_expr)}")
+
 
 def normalize_path_in_ast(ast_node):
     """
     Normalize path expressions within a JAF AST node.
-    
-    Converts all path forms to standard ["path", path_ast] format.
-    
+
+    Converts all path forms to standard ["@", path_ast] format.
+
     Args:
         ast_node: JAF AST node (may contain various path formats)
-        
+
     Returns:
         JAF AST with normalized path expressions
     """
-    if isinstance(ast_node, str) and ast_node.startswith('@'):
-        # Convert @string to ["path", path_ast]
+    if isinstance(ast_node, str) and ast_node.startswith("@"):
+        # Convert @string to ["@", path_ast]
         path_ast = path_expression_to_ast(ast_node)
-        return ["path", path_ast]
-    
+        return ["@", path_ast]
+
     elif isinstance(ast_node, list):
         if len(ast_node) == 2 and ast_node[0] == "@":
-            # Convert ["@", path_expr] to ["path", path_ast] 
-            path_ast = path_expression_to_ast(ast_node)
-            return ["path", path_ast]
+            # Ensure path_ast is normalized
+            path_ast = path_expression_to_ast(ast_node[1])
+            return ["@", path_ast]
         else:
             # Recursively process list elements
             return [normalize_path_in_ast(elem) for elem in ast_node]
-    
+
     else:
         # Return other types unchanged
         return ast_node
 
+
 def ast_to_path_string(path_ast, use_at_syntax=False):
     """
     Convert path AST to string representation.
-    
+
     Args:
         path_ast: Path AST format
         use_at_syntax: If True, prefix with @
-        
+
     Returns:
         String representation of path
     """
     path_string = path_ast_to_string(path_ast)
     return f"@{path_string}" if use_at_syntax else path_string
 
+
 def is_path_expression(expr):
     """
     Check if an expression is a valid path in any supported format.
-    
+
     Args:
         expr: Expression to check (string, @string, AST, or @AST)
-        
+
     Returns:
         bool: True if it's a valid path expression
     """
@@ -446,18 +501,19 @@ def is_path_expression(expr):
     except PathSyntaxError:
         return False
 
+
 def is_at_syntax(expr):
     """
     Check if an expression uses @ syntax.
-    
+
     Args:
         expr: Expression to check
-        
+
     Returns:
         bool: True if it uses @ syntax
     """
     if isinstance(expr, str):
-        return expr.startswith('@')
+        return expr.startswith("@")
     elif isinstance(expr, list) and len(expr) == 2:
         return expr[0] == "@"
     return False

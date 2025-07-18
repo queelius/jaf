@@ -4,13 +4,13 @@ from .path_evaluation import eval_path, exists
 from .path_types import PathValues
 from .path_exceptions import PathSyntaxError
 from .path_conversion import path_ast_to_string, string_to_path_ast
-from .result_set import JafResultSet, JafResultSetError
+from .result_set import JafQuerySet, JafQuerySetError
 
 __version__ = "0.5.2"
 
 __all__ = [
-    "jaf", 
-    "jafError", 
+    "jaf",
+    "jafError",
     "jaf_eval",
     "path_ast_to_string",
     "string_to_path_ast",
@@ -18,7 +18,7 @@ __all__ = [
     "PathSyntaxError",
     "exists",
     "PathValues",
-    "JafResultSet",
-    "JafResultSetError",
-    "CollectionLoader"
+    "JafQuerySet",
+    "JafQuerySetError",
+    "CollectionLoader",
 ]

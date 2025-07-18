@@ -1,308 +1,386 @@
 import json
 import os
 import logging
-from typing import Any, Dict, Iterable, List, Optional, Set, Union
+from typing import Any, Dict, Iterable, List, Optional, Set, Union, Generator, Tuple
 
 # Import from the new io_utils module
 from .io_utils import load_collection
+from .jaf_eval import jaf_eval
+from .streaming_loader import StreamingLoader
 
 logger = logging.getLogger(__name__)
 
-class JafResultSetError(Exception):
-    """Custom exception for errors related to JafResultSet operations."""
+
+class JafQuerySetError(Exception):
+    """Custom exception for errors related to JafQuerySet operations."""
+
     pass
 
-class JafResultSet:
+
+class JafQuerySet:
     """
-    Represents the set of indices from a data collection that satisfy a JAF query,
-    along with metadata to ensure logical consistency when combining results.
+    Represents a lazy query over a data collection, with metadata to ensure
+    logical consistency when combining queries.
     """
 
-    def __init__(self, 
-                 indices: Union[Iterable[int], Set[int]], 
-                 collection_size: int, 
-                 collection_id: Optional[Any] = None,
-                 collection_source: Optional[Dict[str, Any]] = None,
-                 query: Optional[Any] = None):
-        if not isinstance(collection_size, int) or collection_size < 0:
-            raise ValueError("collection_size must be a non-negative integer.")
-        
-        self.indices: Set[int] = set(indices)
-        self.collection_size: int = collection_size
+    def __init__(
+        self,
+        query: Any,
+        collection_id: Optional[Any] = None,
+        collection_source: Optional[Dict[str, Any]] = None,
+    ):
+        self.query: Any = query
         self.collection_id: Optional[Any] = collection_id
         self.collection_source: Optional[Dict[str, Any]] = collection_source
-        self.query: Optional[Any] = query
 
-        # Validate indices
-        if collection_size == 0 and self.indices:
-            raise ValueError("Indices must be empty if collection_size is 0.")
-
-        for i in self.indices:
-            if not isinstance(i, int) or not (0 <= i < collection_size):
-                valid_range_str = f"within the range [0, {collection_size - 1}]" if collection_size > 0 else "empty"
-                raise ValueError(
-                    f"All indices must be integers {valid_range_str}. "
-                    f"Found invalid index: {i}"
-                )
-
-    def _check_compatibility(self, other: "JafResultSet") -> None:
+    def _check_compatibility(self, other: "JafQuerySet") -> None:
         """
-        Verifies that another JafResultSet is compatible for a binary operation.
+        Verifies that another JafQuerySet is compatible for a binary operation.
 
-        Compatibility requires that both result sets originate from the same logical
-        data collection, which is checked by comparing `collection_size` and
-        `collection_id`.
+        Warns if query sets have different collection IDs, as this may indicate
+        operations on different logical collections.
 
         Args:
-            other: The other JafResultSet instance to compare against.
+            other: The other JafQuerySet instance to compare against.
 
         Raises:
-            JafResultSetError: If the result sets are not compatible.
-            TypeError: If 'other' is not a JafResultSet.
+            TypeError: If 'other' is not a JafQuerySet.
         """
-        if not isinstance(other, JafResultSet):
-            raise TypeError("Operand must be an instance of JafResultSet")
+        if not isinstance(other, JafQuerySet):
+            raise TypeError("Operand must be an instance of JafQuerySet")
 
-        # For boolean operations, we primarily care that the collections are the
-        # same size and have the same ID. The physical source representation
-        # (e.g., collection_source) does not need to match, allowing for
-        # operations between a result set from a directory and one from a
-        # re-aggregated file, as long as the logical collection is the same.
-        if self.collection_size != other.collection_size:
-            raise JafResultSetError(
-                f"Collection sizes do not match: {self.collection_size} != {other.collection_size}"
-            )
+        # For boolean operations, we allow combining queries from the same logical collection
+        # even if stored differently (e.g., directory vs re-aggregated file)
         if self.collection_id is not None and other.collection_id is not None:
             if self.collection_id != other.collection_id:
-                raise JafResultSetError(
-                    f"Collection IDs do not match: '{self.collection_id}' != '{other.collection_id}'"
+                logger.warning(
+                    f"Combining queries from different logical collections: '{self.collection_id}' and '{other.collection_id}'. "
+                    "Results may be unpredictable if collections contain different data."
                 )
 
-    def AND(self, other: "JafResultSet") -> "JafResultSet":
+    def AND(self, other: "JafQuerySet") -> "JafQuerySet":
         """
-        Performs a logical AND (intersection) with another JafResultSet.
+        Performs a logical AND (intersection) with another JafQuerySet.
 
         Args:
-            other: The JafResultSet to intersect with.
+            other: The JafQuerySet to intersect with.
 
         Returns:
-            A new JafResultSet containing the intersection of indices.
+            A new JafQuerySet containing the intersection query.
         """
         self._check_compatibility(other)
-        new_indices = self.indices.intersection(other.indices)
-        new_query = ["and", self.query, other.query] if self.query and other.query else None
-        return JafResultSet(
-            indices=new_indices,
-            collection_size=self.collection_size,
-            collection_id=self.collection_id or other.collection_id,
-            collection_source=self.collection_source
-            or other.collection_source,
+        new_query = ["and", self.query, other.query]
+        return JafQuerySet(
             query=new_query,
+            collection_id=self.collection_id or other.collection_id,
+            collection_source=self.collection_source or other.collection_source,
         )
 
-    def __and__(self, other: Any) -> "JafResultSet":
+    def __and__(self, other: Any) -> "JafQuerySet":
         """Operator overload for `&` (AND)."""
-        if not isinstance(other, JafResultSet):
-            return NotImplemented
+        if not isinstance(other, JafQuerySet):
+            raise TypeError(
+                f"Cannot perform boolean operation with {type(other).__name__}. Expected JafQuerySet."
+            )
         return self.AND(other)
 
-    def OR(self, other: "JafResultSet") -> "JafResultSet":
+    def OR(self, other: "JafQuerySet") -> "JafQuerySet":
         """
-        Performs a logical OR (union) with another JafResultSet.
+        Performs a logical OR (union) with another JafQuerySet.
 
         Args:
-            other: The JafResultSet to union with.
+            other: The JafQuerySet to union with.
 
         Returns:
-            A new JafResultSet containing the union of indices.
+            A new JafQuerySet containing the union query.
         """
         self._check_compatibility(other)
-        new_indices = self.indices.union(other.indices)
-        new_query = ["or", self.query, other.query] if self.query and other.query else None
-        return JafResultSet(
-            indices=new_indices,
-            collection_size=self.collection_size,
-            collection_id=self.collection_id or other.collection_id,
-            collection_source=self.collection_source
-            or other.collection_source,
+        new_query = ["or", self.query, other.query]
+        return JafQuerySet(
             query=new_query,
+            collection_id=self.collection_id or other.collection_id,
+            collection_source=self.collection_source or other.collection_source,
         )
 
-    def __or__(self, other: Any) -> "JafResultSet":
+    def __or__(self, other: Any) -> "JafQuerySet":
         """Operator overload for `|` (OR)."""
-        if not isinstance(other, JafResultSet):
-            return NotImplemented
+        if not isinstance(other, JafQuerySet):
+            raise TypeError(
+                f"Cannot perform boolean operation with {type(other).__name__}. Expected JafQuerySet."
+            )
         return self.OR(other)
 
-    def NOT(self) -> "JafResultSet":
+    def NOT(self) -> "JafQuerySet":
         """
-        Performs a logical NOT (complement) on the JafResultSet.
+        Performs a logical NOT (complement) on the JafQuerySet.
 
-        The complement is calculated relative to the entire collection, defined
-        by `collection_size`.
+        The complement is calculated relative to the entire collection.
 
         Returns:
-            A new JafResultSet containing all indices from the collection
-            that are not in this result set.
+            A new JafQuerySet containing the negation query.
         """
-        all_indices = set(range(self.collection_size))
-        new_indices = all_indices.difference(self.indices)
-        new_query = ["not", self.query] if self.query else None
-        return JafResultSet(
-            indices=new_indices,
-            collection_size=self.collection_size,
+        new_query = ["not", self.query]
+        return JafQuerySet(
+            query=new_query,
             collection_id=self.collection_id,
             collection_source=self.collection_source,
-            query=new_query,
         )
 
-    def __invert__(self) -> "JafResultSet":
+    def __invert__(self) -> "JafQuerySet":
         """Operator overload for `~` (NOT)."""
         return self.NOT()
 
-    def XOR(self, other: "JafResultSet") -> "JafResultSet":
+    # Lazy streaming operations
+    def take(self, n: int) -> Generator[Any, None, None]:
         """
-        Performs a logical XOR (symmetric difference) with another JafResultSet.
+        Take the first n items from the evaluated stream.
+
+        This is useful for infinite streams or when you only need a sample.
 
         Args:
-            other: The JafResultSet to perform XOR with.
+            n: Number of items to take
+
+        Yields:
+            Up to n items from the stream
+        """
+        count = 0
+        for item in self.evaluate():
+            if count >= n:
+                break
+            yield item
+            count += 1
+
+    def skip(self, n: int) -> Generator[Any, None, None]:
+        """
+        Skip the first n items from the evaluated stream.
+
+        Args:
+            n: Number of items to skip
+
+        Yields:
+            Items after skipping the first n
+        """
+        count = 0
+        for item in self.evaluate():
+            if count >= n:
+                yield item
+            else:
+                count += 1
+
+    def take_while(self, predicate_query: List) -> Generator[Any, None, None]:
+        """
+        Take items from the stream while the predicate query is true.
+
+        Stops yielding as soon as the predicate becomes false.
+
+        Args:
+            predicate_query: JAF query that returns a boolean
+
+        Yields:
+            Items while the predicate is true
+        """
+        for item in self.evaluate():
+            try:
+                result = jaf_eval.eval(predicate_query, item)
+                if isinstance(result, bool) and result:
+                    yield item
+                else:
+                    break
+            except Exception:
+                break
+
+    def skip_while(self, predicate_query: List) -> Generator[Any, None, None]:
+        """
+        Skip items from the stream while the predicate query is true.
+
+        Starts yielding once the predicate becomes false.
+
+        Args:
+            predicate_query: JAF query that returns a boolean
+
+        Yields:
+            Items after the predicate becomes false
+        """
+        skipping = True
+        for item in self.evaluate():
+            if skipping:
+                try:
+                    result = jaf_eval.eval(predicate_query, item)
+                    if isinstance(result, bool) and result:
+                        continue
+                    else:
+                        skipping = False
+                except Exception:
+                    skipping = False
+
+            if not skipping:
+                yield item
+
+    def slice(
+        self, start: int, stop: Optional[int] = None, step: int = 1
+    ) -> Generator[Any, None, None]:
+        """
+        Slice the stream similar to Python's slice notation.
+
+        Args:
+            start: Starting index
+            stop: Stopping index (exclusive), None for no limit
+            step: Step size
+
+        Yields:
+            Items in the slice
+        """
+        index = 0
+        for item in self.evaluate():
+            if stop is not None and index >= stop:
+                break
+
+            if index >= start and (index - start) % step == 0:
+                yield item
+
+            index += 1
+
+    def enumerate(self, start: int = 0) -> Generator[Tuple[int, Any], None, None]:
+        """
+        Enumerate items from the stream with an index.
+
+        Args:
+            start: Starting index value
+
+        Yields:
+            Tuples of (index, item)
+        """
+        index = start
+        for item in self.evaluate():
+            yield (index, item)
+            index += 1
+
+    def batch(self, size: int) -> Generator[List[Any], None, None]:
+        """
+        Batch items from the stream into groups of a specified size.
+
+        The last batch may have fewer items than the specified size.
+
+        Args:
+            size: Number of items per batch
+
+        Yields:
+            Lists of items, each containing up to 'size' items
+        """
+        batch = []
+        for item in self.evaluate():
+            batch.append(item)
+            if len(batch) >= size:
+                yield batch
+                batch = []
+
+        # Yield any remaining items
+        if batch:
+            yield batch
+
+    def XOR(self, other: "JafQuerySet") -> "JafQuerySet":
+        """
+        Performs a logical XOR (symmetric difference) with another JafQuerySet.
+
+        Args:
+            other: The JafQuerySet to perform XOR with.
 
         Returns:
-            A new JafResultSet containing indices that are in either set,
-            but not in their intersection.
+            A new JafQuerySet containing the XOR query.
         """
         self._check_compatibility(other)
-        new_indices = self.indices.symmetric_difference(other.indices)
-        new_query = None
-        if self.query and other.query:
-            new_query = ["or", ["and", self.query, ["not", other.query]], ["and", ["not", self.query], other.query]]
-        return JafResultSet(
-            indices=new_indices,
-            collection_size=self.collection_size,
-            collection_id=self.collection_id or other.collection_id,
-            collection_source=self.collection_source
-            or other.collection_source,
+        new_query = [
+            "or",
+            ["and", self.query, ["not", other.query]],
+            ["and", ["not", self.query], other.query],
+        ]
+        return JafQuerySet(
             query=new_query,
+            collection_id=self.collection_id or other.collection_id,
+            collection_source=self.collection_source or other.collection_source,
         )
 
-    def __xor__(self, other: Any) -> "JafResultSet":
+    def __xor__(self, other: Any) -> "JafQuerySet":
         """Operator overload for `^` (XOR)."""
-        if not isinstance(other, JafResultSet):
-            return NotImplemented
+        if not isinstance(other, JafQuerySet):
+            raise TypeError(
+                f"Cannot perform boolean operation with {type(other).__name__}. Expected JafQuerySet."
+            )
         return self.XOR(other)
 
-    def SUBTRACT(self, other: "JafResultSet") -> "JafResultSet":
+    def SUBTRACT(self, other: "JafQuerySet") -> "JafQuerySet":
         """
-        Performs a logical SUBTRACT (difference) with another JafResultSet.
+        Performs a logical SUBTRACT (difference) with another JafQuerySet.
 
-        Removes indices from this set that are present in the other set.
+        Removes matching items from this query that are matched by the other query.
 
         Args:
-            other: The JafResultSet whose indices will be subtracted from this one.
+            other: The JafQuerySet whose query will be subtracted from this one.
 
         Returns:
-            A new JafResultSet containing indices from this set but not
-            from the other set.
+            A new JafQuerySet containing the subtraction query.
         """
         self._check_compatibility(other)
-        new_indices = self.indices.difference(other.indices)
-        new_query = ["and", self.query, ["not", other.query]] if self.query and other.query else None
-        return JafResultSet(
-            indices=new_indices,
-            collection_size=self.collection_size,
-            collection_id=self.collection_id or other.collection_id,
-            collection_source=self.collection_source
-            or other.collection_source,
+        new_query = ["and", self.query, ["not", other.query]]
+        return JafQuerySet(
             query=new_query,
+            collection_id=self.collection_id or other.collection_id,
+            collection_source=self.collection_source or other.collection_source,
         )
 
-    def __sub__(self, other: Any) -> "JafResultSet":
+    def __sub__(self, other: Any) -> "JafQuerySet":
         """Operator overload for `-` (SUBTRACT)."""
-        if not isinstance(other, JafResultSet):
-            return NotImplemented
+        if not isinstance(other, JafQuerySet):
+            raise TypeError(
+                f"Cannot perform boolean operation with {type(other).__name__}. Expected JafQuerySet."
+            )
         return self.SUBTRACT(other)
 
     def to_dict(self) -> Dict[str, Any]:
         """
-        Serializes the JafResultSet to a dictionary.
+        Serializes the JafQuerySet to a dictionary.
         """
         return {
-            "indices": sorted(list(self.indices)),
-            "collection_size": self.collection_size,
+            "query": self.query,
             "collection_id": self.collection_id,
             "collection_source": self.collection_source,
-            "query": self.query,
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'JafResultSet':
+    def from_dict(cls, data: Dict[str, Any]) -> "JafQuerySet":
         """
-        Deserializes a JafResultSet from a dictionary.
+        Deserializes a JafQuerySet from a dictionary.
         """
-        if "indices" not in data:
-            raise ValueError("JafResultSet.from_dict: Missing required key in input data: 'indices'")
-        if "collection_size" not in data:
-            raise ValueError("JafResultSet.from_dict: Missing required key in input data: 'collection_size'")
-
-        indices = data["indices"]
-        if not isinstance(indices, (list, set)):
-            raise ValueError("JafResultSet.from_dict: Type error in input data: 'indices' must be a list or set.")
-
-        collection_size = data["collection_size"]
-        if not isinstance(collection_size, int):
-            raise ValueError("JafResultSet.from_dict: 'collection_size' must be an integer.")
-
-        # Backward compatibility for 'filenames_in_collection'
-        collection_source = data.get("collection_source")
-        if not collection_source and "filenames_in_collection" in data:
-            filenames = data["filenames_in_collection"]
-            collection_id = data.get("collection_id")
-            # Infer source from collection_id and filenames
-            source_path = collection_id if isinstance(collection_id, str) and os.path.isdir(collection_id) else None
-            collection_source = {
-                "type": "directory",
-                "path": source_path,
-                "files": filenames
-            }
-            logger.debug(f"Converted legacy 'filenames_in_collection' to 'collection_source': {collection_source}")
+        if "query" not in data:
+            raise ValueError(
+                "JafQuerySet.from_dict: Missing required key in input data: 'query'"
+            )
 
         return cls(
-            indices=indices,
-            collection_size=collection_size,
+            query=data["query"],
             collection_id=data.get("collection_id"),
-            collection_source=collection_source,
-            query=data.get("query"),
+            collection_source=data.get("collection_source"),
         )
 
     def __repr__(self) -> str:
-        return (f"JafResultSet(indices={sorted(list(self.indices))}, "
-                f"collection_size={self.collection_size}, "
-                f"collection_id={self.collection_id}, "
-                f"collection_source={self.collection_source}, "
-                f"query={self.query})")
+        return (
+            f"JafQuerySet(query={self.query}, "
+            f"collection_id={self.collection_id}, "
+            f"collection_source={self.collection_source})"
+        )
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, JafResultSet):
-            return NotImplemented
-        return (self.indices == other.indices and
-                self.collection_size == other.collection_size and
-                self.collection_id == other.collection_id and
-                self.collection_source == other.collection_source and
-                self.query == other.query)
-    
-    def __len__(self) -> int:
-        """Returns the number of matching indices in the result set."""
-        return len(self.indices)
+        if not isinstance(other, JafQuerySet):
+            raise TypeError(
+                f"Cannot perform boolean operation with {type(other).__name__}. Expected JafQuerySet."
+            )
+        return (
+            self.query == other.query
+            and self.collection_id == other.collection_id
+            and self.collection_source == other.collection_source
+        )
 
-    def __iter__(self) -> Iterable[int]:
-        """Returns an iterator over the sorted indices."""
-        return iter(sorted(list(self.indices)))
-
-    def __contains__(self, item: object) -> bool:
-        """Checks if an index is in the result set."""
-        if not isinstance(item, int):
-            return False
-        return item in self.indices
+    # Removed __len__, __iter__, __contains__ - use evaluate() for explicit evaluation
 
     def __ne__(self, other: object) -> bool:
         """Checks for inequality with another object."""
@@ -310,73 +388,118 @@ class JafResultSet:
         return not result if result is not NotImplemented else NotImplemented
 
     # Optional: Overload operators for more Pythonic usage
-    def __and__(self, other: 'JafResultSet') -> 'JafResultSet':
+    def __and__(self, other: "JafQuerySet") -> "JafQuerySet":
         return self.AND(other)
 
-    def __or__(self, other: 'JafResultSet') -> 'JafResultSet':
+    def __or__(self, other: "JafQuerySet") -> "JafQuerySet":
         return self.OR(other)
 
-    def __invert__(self) -> 'JafResultSet':
+    def __invert__(self) -> "JafQuerySet":
         return self.NOT()
-    
-    def __xor__(self, other: 'JafResultSet') -> 'JafResultSet':
+
+    def __xor__(self, other: "JafQuerySet") -> "JafQuerySet":
         return self.XOR(other)
 
-    def __sub__(self, other: 'JafResultSet') -> 'JafResultSet':
+    def __sub__(self, other: "JafQuerySet") -> "JafQuerySet":
         return self.SUBTRACT(other)
 
     def validate(self) -> None:
         """
-        Performs a comprehensive validation of the JafResultSet.
-        - Checks internal consistency.
-        - Tries to load the collection to verify the source and size.
+        Performs a comprehensive validation of the JafQuerySet.
+        Tries to load the collection to verify the source is accessible.
         """
-        # Internal consistency is checked in __init__.
-        # Now, check if the source is loadable and size matches.
         logger.info("Performing validation...")
         try:
             all_objects = load_collection(self.collection_source)
-            if len(all_objects) != self.collection_size:
-                raise JafResultSetError(
-                    f"Collection size mismatch: JRS has {self.collection_size}, "
-                    f"but source has {len(all_objects)} objects."
-                )
-            logger.info("Collection source loaded and size matches.")
-        except JafResultSetError as e:
-            raise e
+            logger.info(
+                f"Collection source loaded successfully with {len(all_objects)} objects."
+            )
         except Exception as e:
-            raise JafResultSetError(f"Failed to load collection from source: {e}") from e
+            raise JafQuerySetError(f"Failed to load collection from source: {e}") from e
 
-    def get_matching_objects(self) -> List[Any]:
+    def evaluate(self) -> Generator[Any, None, None]:
         """
-        Resolves indices back to the original data objects by interpreting
-        the `collection_source` metadata.
+        Evaluates the query against the collection and yields matching objects.
+
+        This method streams results, yielding each matching object as it's found
+        instead of loading the entire collection into memory.
+
+        Yields:
+            Matching objects from the collection
+
+        Raises:
+            JafQuerySetError: If the collection source cannot be loaded or query fails
         """
         source_to_load = self.collection_source
-        
+
         if not source_to_load:
-            # Fallback for older JRS or in-memory cases: try to use collection_id as a file path
-            if isinstance(self.collection_id, str) and os.path.isfile(self.collection_id):
-                logger.debug(f"No collection_source found, falling back to collection_id as file path: {self.collection_id}")
-                source_type = "jsonl" if self.collection_id.endswith(".jsonl") else "json_array"
-                source_to_load = {"type": source_type, "path": self.collection_id}
+            # Fallback: try to use collection_id as a file path
+            if isinstance(self.collection_id, str) and os.path.isfile(
+                self.collection_id
+            ):
+                logger.debug(
+                    f"No collection_source found, falling back to collection_id as file path: {self.collection_id}"
+                )
+                # Build a clean source descriptor chain
+                path = self.collection_id
+
+                # Start with file source
+                source = {"type": "file", "path": path}
+
+                # Add decompression if needed
+                if path.endswith(".gz"):
+                    source = {"type": "gzip", "inner_source": source}
+
+                # Add parser based on format
+                if ".jsonl" in path:
+                    source = {"type": "jsonl", "inner_source": source}
+                else:
+                    source = {"type": "json_array", "inner_source": source}
+
+                source_to_load = source
             else:
-                raise JafResultSetError(
-                    "JafResultSet must have a resolvable 'collection_source' or a file-path 'collection_id' to resolve objects."
+                raise JafQuerySetError(
+                    "JafQuerySet must have a resolvable 'collection_source' or a file-path 'collection_id' to evaluate."
                 )
 
+        # Create streaming loader
+        loader = StreamingLoader()
+
+        # Stream and evaluate
+        logger.debug(f"Streaming evaluation of query {self.query}")
+        match_count = 0
+        total_count = 0
+
         try:
-            all_objects = load_collection(source_to_load)
-        except (NotImplementedError, FileNotFoundError) as e:
-            raise JafResultSetError(f"Failed to load data from collection source: {e}") from e
+            for item in loader.stream(source_to_load):
+                total_count += 1
+                try:
+                    result = jaf_eval.eval(self.query, item)
+                    if isinstance(result, bool) and result:
+                        match_count += 1
+                        logger.debug(f"Item {total_count} matched query")
+                        yield item
+                    elif not isinstance(result, bool):
+                        logger.warning(
+                            f"Query returned non-boolean value for item {total_count}: {result}. Item does not match."
+                        )
+                except ValueError as e:
+                    # Unknown operators, syntax errors - these are real query problems
+                    raise JafQuerySetError(f"Query evaluation failed: {e}") from e
+                except (KeyError, AttributeError, TypeError, IndexError) as e:
+                    # Expected "item doesn't match" errors - path not found, wrong types, etc.
+                    logger.debug(f"Item {total_count} doesn't match query due to: {e}")
+                except Exception as e:
+                    # Unexpected errors - better to fail than silently ignore
+                    raise JafQuerySetError(
+                        f"Unexpected error evaluating query on item {total_count}: {e}"
+                    ) from e
 
-        if len(all_objects) != self.collection_size:
-            logger.warning(
-                f"Data source size mismatch. Expected {self.collection_size} objects based on "
-                f"JafResultSet, but found {len(all_objects)} in source: {source_to_load}. "
-                "The original data source may have changed."
-            )
+        except (FileNotFoundError, ValueError) as e:
+            raise JafQuerySetError(
+                f"Failed to stream data from collection source: {e}"
+            ) from e
 
-        # This is inefficient for large files, but simple and correct.
-        # A future optimization could stream the file and pick out lines by index.
-        return [all_objects[i] for i in sorted(list(self.indices)) if i < len(all_objects)]
+        logger.info(
+            f"Streaming complete: {match_count} matches found out of {total_count} objects"
+        )

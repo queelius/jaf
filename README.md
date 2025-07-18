@@ -149,6 +149,8 @@ This "any match is sufficient" behavior (existential quantification) is intuitiv
 - `lower-case`, `upper-case`, `split`, `join` (String case/manipulation)
 - `+`, `-`, `*`, `/` (Variadic arithmetic)
 - `%` (Modulo)
+- `abs`, `round`, `floor`, `ceil`, `max`, `min` (Mathematical functions)
+- `to-string`, `to-number`, `to-boolean`, `to-list` (Type coercion)
 - `now`, `date`, `datetime`, `date-diff`, `days`, `seconds` (Date/Time utilities)
 
 ## Command-Line Interface (CLI)
@@ -171,14 +173,15 @@ jaf filter <input_source> --query '<query_ast_json_string>' [options]
 
 **Example:**
 ```bash
-# Traditional path syntax
-jaf filter data.jsonl --query '["eq?", ["path", [["key", "status"]]], "active"]'
-
-# With @ syntax (more concise)
+# Simple equality filter
 jaf filter data.jsonl --query '["eq?", "@status", "active"]'
 
-# Complex query with @ syntax
+# Complex query with multiple conditions
 jaf filter data_dir --query '["and", ["eq?", "@status", "active"], ["gt?", "@count", 10]]' --recursive --resolve
+
+# Using new mathematical and type coercion operators
+jaf filter data.jsonl --query '["gt?", ["abs", "@temperature"], 100]'
+jaf filter data.jsonl --query '["eq?", ["to-string", "@id"], "123"]'
 ```
 
 ### Result Set Operations (Boolean Algebra)
@@ -262,22 +265,14 @@ data = [
 ]
 
 # Find active developers (status is "active" and "dev" is in tags)
-# Traditional syntax:
 query_active_devs = [
-    "and",
-    ["eq?", ["path", [["key", "status"]]], "active"],
-    ["in?", "dev", ["path", [["key", "tags"]]]]
-]
-
-# With @ syntax (more concise):
-query_active_devs_at = [
     "and",
     ["eq?", "@status", "active"],
     ["in?", "dev", "@tags"]
 ]
 
 # The jaf function returns a JafResultSet instance
-result_set_active_devs: JafResultSet = jaf(data, query_active_devs_at, collection_id="my_data_v1")
+result_set_active_devs: JafResultSet = jaf(data, query_active_devs, collection_id="my_data_v1")
 print(f"Active developers JafResultSet: {result_set_active_devs}")
 print(f"Indices of active developers: {list(result_set_active_devs)}") # Iterate or convert to list
 
@@ -286,7 +281,7 @@ active_dev_objects = [data[i] for i in result_set_active_devs.indices]
 print(f"Active developer objects: {active_dev_objects}")
 
 # Example of using JafResultSet methods (programmatic boolean algebra)
-query_python_users = ["in?", "python", "@tags"]  # Using @ syntax
+query_python_users = ["in?", "python", "@tags"]
 rs_python: JafResultSet = jaf(data, query_python_users, collection_id="my_data_v1")
 
 # Active Python developers

@@ -5,13 +5,13 @@ from typing import List, Optional, Any, Iterator
 
 logger = logging.getLogger(__name__)
 
+
 def walk_data_files(directory_path: str, recursive: bool) -> Iterator[str]:
     """
     Walks a directory and yields paths to .json and .jsonl files.
-    Sorts the files to ensure a consistent order.
     """
     if not os.path.isdir(directory_path):
-        return # Gracefully handle non-existent directories
+        return  # Gracefully handle non-existent directories
 
     found_files = []
     if recursive:
@@ -25,10 +25,10 @@ def walk_data_files(directory_path: str, recursive: bool) -> Iterator[str]:
                 full_path = os.path.join(directory_path, file)
                 if os.path.isfile(full_path):
                     found_files.append(full_path)
-    
-    # Sort to ensure deterministic order
-    for file_path in sorted(found_files):
+
+    for file_path in found_files:
         yield file_path
+
 
 def load_objects_from_file(file_path: str) -> Optional[List[Any]]:
     """
@@ -58,11 +58,11 @@ def load_objects_from_file(file_path: str) -> Optional[List[Any]]:
             else:
                 logger.warning(f"Unsupported file type, skipping: {file_path}")
                 return None
-        
+
         if not objects:
             logger.info(f"No JSON objects found or loaded from {file_path}")
             return None
-            
+
         logger.debug(f"Successfully loaded {len(objects)} objects from {file_path}")
         return objects
     except json.JSONDecodeError as e:
@@ -72,8 +72,11 @@ def load_objects_from_file(file_path: str) -> Optional[List[Any]]:
         logger.error(f"IO error reading {file_path}: {e}", exc_info=False)
         return None
     except Exception as e_outer:
-        logger.error(f"Unexpected error loading file {file_path}: {e_outer}", exc_info=True)
+        logger.error(
+            f"Unexpected error loading file {file_path}: {e_outer}", exc_info=True
+        )
         return None
+
 
 def load_collection(collection_source: dict) -> List[Any]:
     """
@@ -87,7 +90,7 @@ def load_collection(collection_source: dict) -> List[Any]:
         return collection_source.get("content", [])
     elif source_type == "directory":
         file_paths = collection_source.get("files", [])
-        for file_path in sorted(file_paths): # Ensure consistent order
+        for file_path in file_paths:
             loaded = load_objects_from_file(file_path)
             if loaded:
                 all_objects.extend(loaded)
@@ -103,6 +106,7 @@ def load_collection(collection_source: dict) -> List[Any]:
         raise NotImplementedError(f"Unsupported collection source type: {source_type}")
 
     return all_objects
+
 
 def load_objects_from_string(content: str) -> tuple[Optional[List[Any]], Optional[str]]:
     """
@@ -125,7 +129,7 @@ def load_objects_from_string(content: str) -> tuple[Optional[List[Any]], Optiona
     except json.JSONDecodeError:
         # If it's not a valid single JSON document, try parsing as JSONL.
         objects = []
-        lines = stripped_content.split('\n')
+        lines = stripped_content.split("\n")
         try:
             for line in lines:
                 line = line.strip()
@@ -133,8 +137,11 @@ def load_objects_from_string(content: str) -> tuple[Optional[List[Any]], Optiona
                     objects.append(json.loads(line))
             if objects:
                 return objects, "jsonl"
-            else: # String might have just been whitespace or empty lines
+            else:  # String might have just been whitespace or empty lines
                 return None, None
         except json.JSONDecodeError as e:
-            logger.error(f"Content could not be parsed as JSON or JSONL. Details: {e}", exc_info=False)
+            logger.error(
+                f"Content could not be parsed as JSON or JSONL. Details: {e}",
+                exc_info=False,
+            )
             return None, None

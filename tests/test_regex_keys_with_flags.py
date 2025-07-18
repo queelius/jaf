@@ -12,7 +12,7 @@ class TestRegexKeyWithFlags(unittest.TestCase):
         """Set up test data with various key patterns"""
         self.test_data = {
             "UserName": "John Doe",
-            "username": "jane_smith", 
+            "username": "jane_smith",
             "EMAIL": "test@example.com",
             "email_address": "admin@test.com",
             "Phone": "555-1234",
@@ -25,14 +25,14 @@ class TestRegexKeyWithFlags(unittest.TestCase):
                 "Database_URL": "postgres://localhost",
                 "database_url": "mysql://localhost",
                 "Cache_TTL": 3600,
-                "cache_ttl": 1800
+                "cache_ttl": 1800,
             },
             "metrics": {
                 "response_time_ms": 150,
                 "Response_Time_MS": 200,
                 "error_count": 5,
-                "ERROR_COUNT": 10
-            }
+                "ERROR_COUNT": 10,
+            },
         }
 
     def test_regex_key_case_insensitive(self):
@@ -56,7 +56,7 @@ class TestRegexKeyWithFlags(unittest.TestCase):
         result = eval_path([["regex_key", "email", re.IGNORECASE]], self.test_data)
         self.assertIsInstance(result, PathValues)
         self.assertIn("test@example.com", result)  # EMAIL
-        self.assertIn("admin@test.com", result)   # email_address
+        self.assertIn("admin@test.com", result)  # email_address
 
     def test_regex_key_combined_integer_flags(self):
         """Test combining multiple integer flags"""
@@ -69,15 +69,19 @@ class TestRegexKeyWithFlags(unittest.TestCase):
 
     def test_regex_key_nested_with_flags(self):
         """Test regex matching in nested objects with flags"""
-        result = eval_path([["key", "config"], ["regex_key", "database", "i"]], self.test_data)
+        result = eval_path(
+            [["key", "config"], ["regex_key", "database", "i"]], self.test_data
+        )
         self.assertIsInstance(result, PathValues)
         self.assertIn("postgres://localhost", result)  # Database_URL
-        self.assertIn("mysql://localhost", result)     # database_url
+        self.assertIn("mysql://localhost", result)  # database_url
 
     def test_regex_key_complex_patterns_with_flags(self):
         """Test complex regex patterns with flags"""
         # Match keys ending with "_ms" or "_MS" case-insensitively
-        result = eval_path([["key", "metrics"], ["regex_key", ".*_ms$", "i"]], self.test_data)
+        result = eval_path(
+            [["key", "metrics"], ["regex_key", ".*_ms$", "i"]], self.test_data
+        )
         self.assertIsInstance(result, PathValues)
         self.assertIn(150, result)  # response_time_ms
         self.assertIn(200, result)  # Response_Time_MS
@@ -85,22 +89,21 @@ class TestRegexKeyWithFlags(unittest.TestCase):
     def test_regex_key_word_boundaries_with_flags(self):
         """Test word boundary patterns with flags"""
         # Match keys containing "count" case-insensitively (not requiring word boundaries)
-        result = eval_path([["key", "metrics"], ["regex_key", ".*count", "i"]], self.test_data)
+        result = eval_path(
+            [["key", "metrics"], ["regex_key", ".*count", "i"]], self.test_data
+        )
         self.assertIsInstance(result, PathValues)
-        self.assertIn(5, result)   # error_count
+        self.assertIn(5, result)  # error_count
         self.assertIn(10, result)  # ERROR_COUNT
 
     def test_regex_key_dotall_flag(self):
         """Test dotall flag (though less common for key matching)"""
-        multiline_data = {
-            "key\nwith\nnewlines": "value1",
-            "normal_key": "value2"
-        }
-        
+        multiline_data = {"key\nwith\nnewlines": "value1", "normal_key": "value2"}
+
         # Without dotall, . doesn't match newlines
         result = eval_path([["regex_key", "key.*newlines"]], multiline_data)
         self.assertEqual(len(result), 0)
-        
+
         # With dotall, . matches newlines
         result = eval_path([["regex_key", "key.*newlines", "s"]], multiline_data)
         self.assertIn("value1", result)
@@ -115,7 +118,7 @@ class TestRegexKeyWithFlags(unittest.TestCase):
             (key|KEY)       # Match "key" or "KEY"
             $               # End of string
         """
-        
+
         result = eval_path([["regex_key", verbose_pattern, "x"]], self.test_data)
         self.assertIsInstance(result, PathValues)
         self.assertIn("secret123", result)  # API_KEY
@@ -126,9 +129,11 @@ class TestRegexKeyWithFlags(unittest.TestCase):
         # Invalid flag character
         with self.assertRaisesRegex(PathSyntaxError, "unknown flag 'z'"):
             eval_path([["regex_key", "test", "z"]], self.test_data)
-        
+
         # Invalid flag type
-        with self.assertRaisesRegex(PathSyntaxError, "expects a string or integer argument for flags"):
+        with self.assertRaisesRegex(
+            PathSyntaxError, "expects a string or integer argument for flags"
+        ):
             eval_path([["regex_key", "test", ["invalid"]]], self.test_data)
 
     def test_regex_key_invalid_pattern_with_flags(self):
@@ -165,14 +170,16 @@ class TestRegexKeyWithFlags(unittest.TestCase):
         # Too few arguments
         with self.assertRaisesRegex(PathSyntaxError, "expects 1 or 2 arguments"):
             eval_path([["regex_key"]], self.test_data)
-        
+
         # Too many arguments
         with self.assertRaisesRegex(PathSyntaxError, "expects 1 or 2 arguments"):
             eval_path([["regex_key", "pattern", "i", "extra"]], self.test_data)
 
     def test_regex_key_non_string_pattern(self):
         """Test validation of pattern argument type"""
-        with self.assertRaisesRegex(PathSyntaxError, "expects a string argument for the pattern"):
+        with self.assertRaisesRegex(
+            PathSyntaxError, "expects a string argument for the pattern"
+        ):
             eval_path([["regex_key", 123, "i"]], self.test_data)
 
     def test_regex_key_with_wildcards_and_flags(self):
@@ -180,25 +187,30 @@ class TestRegexKeyWithFlags(unittest.TestCase):
         # Find all keys containing "time" case-insensitively in any nested object
         result = eval_path([["wc_level"], ["regex_key", "time", "i"]], self.test_data)
         self.assertIsInstance(result, PathValues)
-        self.assertTrue(len(result) >= 2)  # Should find response_time_ms and Response_Time_MS
+        self.assertTrue(
+            len(result) >= 2
+        )  # Should find response_time_ms and Response_Time_MS
 
     def test_regex_key_flag_combinations(self):
         """Test various flag combinations"""
         flag_combinations = [
-            "i",     # case-insensitive
-            "im",    # case-insensitive + multiline
-            "is",    # case-insensitive + dotall
-            "ix",    # case-insensitive + verbose
-            "imsxa" # all flags
+            "i",  # case-insensitive
+            "im",  # case-insensitive + multiline
+            "is",  # case-insensitive + dotall
+            "ix",  # case-insensitive + verbose
+            "imsxa",  # all flags
         ]
-        
+
         for flags in flag_combinations:
             with self.subTest(flags=flags):
                 try:
                     result = eval_path([["regex_key", "test", flags]], self.test_data)
                     self.assertIsInstance(result, PathValues)
                 except Exception as e:
-                    self.fail(f"Flag combination '{flags}' should not raise an exception: {e}")
+                    self.fail(
+                        f"Flag combination '{flags}' should not raise an exception: {e}"
+                    )
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

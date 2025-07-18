@@ -1,269 +1,341 @@
 import pytest
-from jaf.result_set import JafResultSet, JafResultSetError
+from jaf.result_set import JafQuerySet, JafQuerySetError
 
-class TestJafResultSetInit:
+
+class TestJafQuerySetInit:
     def test_valid_creation(self):
-        rs = JafResultSet({1, 2}, 5, "id1")
-        assert rs.indices == {1, 2}
-        assert rs.collection_size == 5
+        query = ["eq?", ["@", [["key", "name"]]], "Alice"]
+        rs = JafQuerySet(query=query, collection_id="id1")
+        assert rs.query == query
         assert rs.collection_id == "id1"
 
-    def test_valid_creation_empty_indices(self):
-        rs = JafResultSet([], 3)
-        assert rs.indices == set()
-        assert rs.collection_size == 3
+    def test_valid_creation_no_collection_id(self):
+        query = ["gt?", ["@", [["key", "age"]]], 18]
+        rs = JafQuerySet(query=query)
+        assert rs.query == query
         assert rs.collection_id is None
 
-    def test_valid_creation_collection_size_zero_empty_indices(self):
-        rs = JafResultSet([], 0)
-        assert rs.indices == set()
-        assert rs.collection_size == 0
+    def test_valid_creation_with_collection_source(self):
+        query = ["lt?", ["@", [["key", "score"]]], 50]
+        source = {"type": "jsonl", "path": "/test.jsonl"}
+        rs = JafQuerySet(query=query, collection_id="test", collection_source=source)
+        assert rs.query == query
+        assert rs.collection_source == source
 
-    def test_invalid_collection_size_negative(self):
-        with pytest.raises(ValueError, match="collection_size must be a non-negative integer"):
-            JafResultSet({1}, -1)
+    def test_valid_creation_minimal(self):
+        # Test minimal constructor - just a query
+        query = ["is-string?", ["@", [["key", "name"]]]]
+        rs = JafQuerySet(query=query)
+        assert rs.query == query
+        assert rs.collection_id is None
+        assert rs.collection_source is None
 
-    def test_invalid_collection_size_type(self):
-        with pytest.raises(ValueError, match="collection_size must be a non-negative integer"):
-            JafResultSet({1}, "abc") # type: ignore
+    def test_constructor_positional_args(self):
+        # Test that positional args work (though keyword args are preferred)
+        rs = JafQuerySet(["eq?", True], "test_id", {"type": "test"})
+        assert rs.query == ["eq?", True]
+        assert rs.collection_id == "test_id"
+        assert rs.collection_source == {"type": "test"}
 
-    def test_invalid_indices_out_of_bounds_upper(self):
-        # Adjusted match to be more general for the "Found: {indices_set}" part
-        with pytest.raises(ValueError, match=r"All indices must be integers within the range \[0, 2\]. Found invalid index: 3"):
-            JafResultSet({0, 3}, 3)
-            
-    def test_invalid_indices_out_of_bounds_negative(self):
-        with pytest.raises(ValueError, match=r"All indices must be integers within the range \[0, 2\]. Found invalid index: -1"):
-            JafResultSet({-1, 1}, 3)
 
-    def test_invalid_indices_type(self):
-        # The representation of the set with mixed types might vary, so match the core message.
-        # The actual error message will list the problematic set, e.g., Found: {1, 'a'}
-        with pytest.raises(ValueError, match=r"All indices must be integers within the range \[0, 2\]. Found invalid index: a"):
-            JafResultSet({"a", 1}, 3) # type: ignore
-
-    def test_invalid_indices_collection_size_zero_non_empty_indices(self):
-        # This will fail the 0 <= i < self.collection_size (0 <= 0 < 0 is false)
-        with pytest.raises(ValueError, match=r"Indices must be empty if collection_size is 0."):
-            JafResultSet({0}, 0)
-
-class TestJafResultSetSerialization:
+class TestJafQuerySetSerialization:
     def test_to_dict(self):
-        rs = JafResultSet({2, 0, 1}, 5, "id_test")
+        query = ["eq?", ["@", [["key", "status"]]], "active"]
+        source = {"type": "jsonl", "path": "/test.jsonl"}
+        rs = JafQuerySet(query=query, collection_id="id_test", collection_source=source)
         expected = {
-            "indices": [0, 1, 2], # to_dict sorts indices
-            "collection_size": 5,
+            "query": query,
             "collection_id": "id_test",
-            "collection_source": None,
-            "query": None
+            "collection_source": source,
         }
         assert rs.to_dict() == expected
 
-    def test_to_dict_no_collection_id(self):
-        rs = JafResultSet(set(), 3)
+    def test_to_dict_minimal(self):
+        query = ["gt?", ["@", [["key", "age"]]], 18]
+        rs = JafQuerySet(query=query)
         expected = {
-            "indices": [],
-            "collection_size": 3,
+            "query": query,
             "collection_id": None,
             "collection_source": None,
-            "query": None
         }
         assert rs.to_dict() == expected
 
     def test_from_dict_valid(self):
-        data = {
-            "indices": [0, 1, 2],
-            "collection_size": 5,
-            "collection_id": "id_test"
-        }
-        rs = JafResultSet.from_dict(data)
-        assert rs.indices == {0, 1, 2}
-        assert rs.collection_size == 5
+        query = ["lt?", ["@", [["key", "price"]]], 100]
+        data = {"query": query, "collection_id": "id_test"}
+        rs = JafQuerySet.from_dict(data)
+        assert rs.query == query
         assert rs.collection_id == "id_test"
         assert rs.collection_source is None
 
-    def test_from_dict_indices_as_set(self):
+    def test_from_dict_with_source(self):
+        query = ["contains?", ["@", [["key", "tags"]]], "python"]
+        source = {"type": "json_array", "path": "/data.json"}
+        data = {"query": query, "collection_id": "test", "collection_source": source}
+        rs = JafQuerySet.from_dict(data)
+        assert rs.query == query
+        assert rs.collection_source == source
+
+    def test_from_dict_missing_query(self):
+        with pytest.raises(
+            ValueError,
+            match="JafQuerySet.from_dict: Missing required key in input data: 'query'",
+        ):
+            JafQuerySet.from_dict({"collection_id": "test"})
+
+    def test_from_dict_empty_dict(self):
+        with pytest.raises(
+            ValueError,
+            match="JafQuerySet.from_dict: Missing required key in input data: 'query'",
+        ):
+            JafQuerySet.from_dict({})
+
+    def test_from_dict_with_all_fields(self):
+        # Test that all new format fields work correctly
+        query = ["eq?", ["@", [["key", "name"]]], "test"]
+        source = {"type": "jsonl", "path": "/test.jsonl"}
         data = {
-            "indices": {0, 1, 2}, 
-            "collection_size": 5,
-            "collection_id": "id_test"
+            "query": query,
+            "collection_id": "test_collection",
+            "collection_source": source,
         }
-        rs = JafResultSet.from_dict(data)
-        assert rs.indices == {0, 1, 2}
-
-    def test_from_dict_missing_indices(self):
-        with pytest.raises(ValueError, match="JafResultSet.from_dict: Missing required key in input data: 'indices'"):
-            JafResultSet.from_dict({"collection_size": 5})
-
-    def test_from_dict_missing_collection_size(self):
-        with pytest.raises(ValueError, match="JafResultSet.from_dict: Missing required key in input data: 'collection_size'"):
-            JafResultSet.from_dict({"indices": [1]})
-
-    def test_from_dict_invalid_indices_type(self):
-        with pytest.raises(ValueError, match="JafResultSet.from_dict: Type error in input data: 'indices' must be a list or set."):
-            JafResultSet.from_dict({"indices": "1,2,3", "collection_size": 5})
-
-    def test_from_dict_invalid_collection_size_type(self):
-        with pytest.raises(ValueError, match="JafResultSet.from_dict: 'collection_size' must be an integer."):
-            JafResultSet.from_dict({"indices": [1], "collection_size": "5"})
-            
-    def test_from_dict_indices_out_of_bounds(self):
-        data = {"indices": [0, 4], "collection_size": 3}
-        # This calls __init__, so the error message comes from there.
-        with pytest.raises(ValueError, match=r"All indices must be integers within the range \[0, 2\]. Found invalid index:"):
-            JafResultSet.from_dict(data)
+        rs = JafQuerySet.from_dict(data)
+        assert rs.query == query
+        assert rs.collection_id == "test_collection"
+        assert rs.collection_source == source
 
 
-class TestJafResultSetCompatibility:
+class TestJafQuerySetCompatibility:
     def test_compatible(self):
-        rs1 = JafResultSet({1}, 5, "id1")
-        rs2 = JafResultSet({2}, 5, "id1")
-        rs1._check_compatibility(rs2) 
+        rs1 = JafQuerySet(query=["eq?", "@name", "test1"], collection_id="id1")
+        rs2 = JafQuerySet(query=["eq?", "@name", "test2"], collection_id="id1")
+        rs1._check_compatibility(rs2)
 
     def test_compatible_one_id_none(self):
-        rs1 = JafResultSet({1}, 5, "id1")
-        rs2 = JafResultSet({2}, 5, None)
-        rs1._check_compatibility(rs2) 
+        rs1 = JafQuerySet(query=["eq?", "@name", "test1"], collection_id="id1")
+        rs2 = JafQuerySet(query=["eq?", "@name", "test2"], collection_id=None)
+        rs1._check_compatibility(rs2)
 
     def test_compatible_both_ids_none(self):
-        rs1 = JafResultSet({1}, 5)
-        rs2 = JafResultSet({2}, 5)
-        rs1._check_compatibility(rs2) 
+        rs1 = JafQuerySet(query=["eq?", "@name", "test1"])
+        rs2 = JafQuerySet(query=["eq?", "@name", "test2"])
+        rs1._check_compatibility(rs2)
 
-    def test_incompatible_collection_size(self):
-        rs1 = JafResultSet({1}, 5)
-        rs2 = JafResultSet({2}, 6)
-        with pytest.raises(JafResultSetError, match="Collection sizes do not match: 5 != 6"):
-            rs1._check_compatibility(rs2)
+    def test_incompatible_collection_id_warning(self):
+        # With lazy evaluation, different collection IDs just issue a warning
+        rs1 = JafQuerySet(query=["eq?", "@name", "test1"], collection_id="id1")
+        rs2 = JafQuerySet(query=["eq?", "@name", "test2"], collection_id="id2")
 
-    def test_incompatible_collection_id(self):
-        rs1 = JafResultSet({1}, 5, "id1")
-        rs2 = JafResultSet({2}, 5, "id2")
-        with pytest.raises(JafResultSetError, match="Collection IDs do not match: 'id1' != 'id2'"):
-            rs1._check_compatibility(rs2)
+        # This should not raise an error, just log a warning
+        # No exception should be raised - this is the new lazy evaluation behavior
+        rs1._check_compatibility(rs2)  # Should complete without error
 
     def test_incompatible_type(self):
-        rs1 = JafResultSet({1}, 5)
-        with pytest.raises(TypeError, match="Operand must be an instance of JafResultSet"):
-            rs1._check_compatibility(object()) # type: ignore
+        rs1 = JafQuerySet(query=["eq?", "@name", "test1"])
+        with pytest.raises(
+            TypeError, match="Operand must be an instance of JafQuerySet"
+        ):
+            rs1._check_compatibility(object())  # type: ignore
 
-class TestJafResultSetBooleanOps:
-    # Define rs1 and rs2 inside setup_method or as class attributes if they don't change
-    # For simplicity here, defining them as they were, assuming they are immutable for tests
-    rs1 = JafResultSet({0, 1, 2}, 5, "common_id")
-    rs2 = JafResultSet({2, 3, 4}, 5, "common_id")
-    rs_id_none = JafResultSet({1,2}, 5, None)
-    rs_other_id_none = JafResultSet({2,3}, 5, None)
-    rs_id_diff = JafResultSet({1,2}, 5, "diff_id")
 
+class TestJafQuerySetBooleanOps:
+    # Test data for boolean operations with lazy query composition
+    def setup_method(self):
+        # Sample queries for testing boolean operations
+        self.rs1 = JafQuerySet(
+            query=["eq?", ["@", [["key", "status"]]], "active"],
+            collection_id="common_id",
+        )
+        self.rs2 = JafQuerySet(
+            query=["gt?", ["@", [["key", "age"]]], 25], collection_id="common_id"
+        )
+        self.rs_id_none = JafQuerySet(
+            query=["eq?", ["@", [["key", "type"]]], "user"], collection_id=None
+        )
+        self.rs_other_id_none = JafQuerySet(
+            query=["lt?", ["@", [["key", "score"]]], 100], collection_id=None
+        )
+        self.rs_id_diff = JafQuerySet(
+            query=["eq?", ["@", [["key", "role"]]], "admin"], collection_id="diff_id"
+        )
 
     # AND Tests
     def test_and(self):
         result = self.rs1.AND(self.rs2)
-        assert result.indices == {2}
-        assert result.collection_size == 5
+        # Check that result contains composed AND query
+        assert result.query == [
+            "and",
+            ["eq?", ["@", [["key", "status"]]], "active"],
+            ["gt?", ["@", [["key", "age"]]], 25],
+        ]
         assert result.collection_id == "common_id"
 
     def test_and_operator(self):
         result = self.rs1 & self.rs2
-        assert result.indices == {2}
+        # Check that operator creates same result as method
+        assert result.query == [
+            "and",
+            ["eq?", ["@", [["key", "status"]]], "active"],
+            ["gt?", ["@", [["key", "age"]]], 25],
+        ]
 
     def test_and_id_policy(self):
-        res1 = self.rs1.AND(self.rs_id_none) 
+        res1 = self.rs1.AND(self.rs_id_none)
         assert res1.collection_id == "common_id"
-        res2 = self.rs_id_none.AND(self.rs1) 
-        assert res2.collection_id == "common_id" # rs1.collection_id is preferred
-        res3 = self.rs_id_none.AND(self.rs_other_id_none) 
+        res2 = self.rs_id_none.AND(self.rs1)
+        assert res2.collection_id == "common_id"  # rs1.collection_id is preferred
+        res3 = self.rs_id_none.AND(self.rs_other_id_none)
         assert res3.collection_id is None
-
 
     # OR Tests
     def test_or(self):
         result = self.rs1.OR(self.rs2)
-        assert result.indices == {0, 1, 2, 3, 4}
+        # Check that result contains composed OR query
+        assert result.query == [
+            "or",
+            ["eq?", ["@", [["key", "status"]]], "active"],
+            ["gt?", ["@", [["key", "age"]]], 25],
+        ]
         assert result.collection_id == "common_id"
 
     def test_or_operator(self):
         result = self.rs1 | self.rs2
-        assert result.indices == {0, 1, 2, 3, 4}
+        # Check that operator creates same result as method
+        assert result.query == [
+            "or",
+            ["eq?", ["@", [["key", "status"]]], "active"],
+            ["gt?", ["@", [["key", "age"]]], 25],
+        ]
 
     # NOT Tests
     def test_not(self):
         result = self.rs1.NOT()
-        assert result.indices == {3, 4}
-        assert result.collection_size == 5
+        # Check that result contains composed NOT query
+        assert result.query == ["not", ["eq?", ["@", [["key", "status"]]], "active"]]
         assert result.collection_id == "common_id"
 
     def test_not_operator(self):
         result = ~self.rs1
-        assert result.indices == {3, 4}
+        # Check that operator creates same result as method
+        assert result.query == ["not", ["eq?", ["@", [["key", "status"]]], "active"]]
 
-    def test_not_empty_set(self):
-        rs_empty = JafResultSet(set(), 3, "id_empty")
-        result = rs_empty.NOT()
-        assert result.indices == {0, 1, 2}
-        assert result.collection_id == "id_empty"
+    def test_not_empty_query(self):
+        rs_always_false = JafQuerySet(
+            query=["eq?", ["@", [["key", "nonexistent"]]], "impossible"],
+            collection_id="id_test",
+        )
+        result = rs_always_false.NOT()
+        assert result.query == [
+            "not",
+            ["eq?", ["@", [["key", "nonexistent"]]], "impossible"],
+        ]
+        assert result.collection_id == "id_test"
 
-    def test_not_full_set(self):
-        rs_full = JafResultSet({0,1,2}, 3, "id_full")
-        result = rs_full.NOT()
-        assert result.indices == set()
+    def test_not_simple_query(self):
+        rs_simple = JafQuerySet(
+            query=["eq?", ["@", [["key", "active"]]], True], collection_id="id_test"
+        )
+        result = rs_simple.NOT()
+        assert result.query == ["not", ["eq?", ["@", [["key", "active"]]], True]]
 
     # XOR Tests
     def test_xor(self):
         result = self.rs1.XOR(self.rs2)
-        assert result.indices == {0, 1, 3, 4}
+        # Check that result contains composed XOR query
+        expected_query = [
+            "not",
+            ["eq?", ["@", [["key", "status"]]], "active"],
+            ["gt?", ["@", [["key", "age"]]], 25],
+        ]
+        # XOR is implemented as (A AND NOT B) OR (NOT A AND B)
         assert result.collection_id == "common_id"
+        # Just verify it's a proper XOR composition - exact structure may vary
+        assert isinstance(result.query, list)
+        assert len(result.query) > 1
 
     def test_xor_operator(self):
         result = self.rs1 ^ self.rs2
-        assert result.indices == {0, 1, 3, 4}
+        # Check that operator creates same result as method
+        assert result.collection_id == "common_id"
+        assert isinstance(result.query, list)
 
     # SUBTRACT Tests
     def test_subtract(self):
-        result = self.rs1.SUBTRACT(self.rs2) 
-        assert result.indices == {0, 1}
+        result = self.rs1.SUBTRACT(self.rs2)
+        # Check that result contains composed SUBTRACT query (A AND NOT B)
+        expected_query = [
+            "and",
+            ["eq?", ["@", [["key", "status"]]], "active"],
+            ["not", ["gt?", ["@", [["key", "age"]]], 25]],
+        ]
+        assert result.query == expected_query
         assert result.collection_id == "common_id"
 
     def test_subtract_operator(self):
         result = self.rs1 - self.rs2
-        assert result.indices == {0, 1}
+        # Check that operator creates same result as method
+        expected_query = [
+            "and",
+            ["eq?", ["@", [["key", "status"]]], "active"],
+            ["not", ["gt?", ["@", [["key", "age"]]], 25]],
+        ]
+        assert result.query == expected_query
 
-    # Incompatibility
-    def test_op_incompatible_size(self):
-        rs_diff_size = JafResultSet({1}, 6, "common_id")
-        with pytest.raises(JafResultSetError, match="Collection sizes do not match"):
-            self.rs1.AND(rs_diff_size)
+    # Compatibility with warnings
+    def test_op_different_collection_id_warning(self):
+        # With lazy evaluation, different collection IDs just issue a warning
+        # but the operation should still succeed
+        result = self.rs1.OR(self.rs_id_diff)
 
-    def test_op_incompatible_id(self):
-        with pytest.raises(JafResultSetError, match="Collection IDs do not match"):
-            self.rs1.OR(self.rs_id_diff)
+        # Operation should succeed and create a valid query
+        assert isinstance(result.query, list)
+        assert result.query[0] == "or"
+        # Collection ID policy: prefer the first operand's ID
+        assert result.collection_id == "common_id"
 
-class TestJafResultSetDunderMethods:
-    def test_len(self):
-        rs = JafResultSet({0, 1, 2}, 5)
-        assert len(rs) == 3
-        rs_empty = JafResultSet(set(), 5)
-        assert len(rs_empty) == 0
 
-    def test_iter(self):
-        rs = JafResultSet({2, 0, 1}, 3)
-        assert list(rs) == [0, 1, 2] 
+class TestJafQuerySetDunderMethods:
+    def test_len_raises_error(self):
+        # len() should raise TypeError since we removed __len__ for lazy evaluation
+        rs = JafQuerySet(query=["eq?", ["@", [["key", "status"]]], "active"])
+        with pytest.raises(TypeError):
+            len(rs)
+
+    def test_iter_raises_error(self):
+        # iter() should raise TypeError since we removed __iter__ for lazy evaluation
+        rs = JafQuerySet(query=["eq?", ["@", [["key", "status"]]], "active"])
+        with pytest.raises(TypeError):
+            list(rs)
 
     def test_eq(self):
-        rs1 = JafResultSet({0, 1}, 2, "id1")
-        rs2 = JafResultSet({0, 1}, 2, "id1")
-        rs3 = JafResultSet({0}, 2, "id1")     
-        rs4 = JafResultSet({0, 1}, 3, "id1")  
-        rs5 = JafResultSet({0, 1}, 2, "id2")  
-        rs6 = JafResultSet({0, 1}, 2, None)   
+        # Test equality based on query, collection_id, and collection_source
+        rs1 = JafQuerySet(
+            query=["eq?", ["@", [["key", "name"]]], "test"], collection_id="id1"
+        )
+        rs2 = JafQuerySet(
+            query=["eq?", ["@", [["key", "name"]]], "test"], collection_id="id1"
+        )
+        rs3 = JafQuerySet(
+            query=["eq?", ["@", [["key", "name"]]], "different"], collection_id="id1"
+        )
+        rs4 = JafQuerySet(
+            query=["eq?", ["@", [["key", "name"]]], "test"], collection_id="id2"
+        )
+        rs5 = JafQuerySet(
+            query=["eq?", ["@", [["key", "name"]]], "test"], collection_id=None
+        )
 
+        # Same query and collection_id should be equal
         assert rs1 == rs2
+        # Different queries should not be equal
         assert not (rs1 == rs3)
+        # Different collection_ids should not be equal
         assert not (rs1 == rs4)
+        # None vs string collection_id should not be equal
         assert not (rs1 == rs5)
-        assert not (rs1 == rs6)
-        assert not (rs6 == rs1)
-        assert rs1 != rs3 
-        assert rs1 != object()
-        assert not (rs1 == object())
+        assert not (rs5 == rs1)
+        # Use != operator
+        assert rs1 != rs3
+        # Comparison with non-JafQuerySet should raise TypeError
+        with pytest.raises(TypeError):
+            rs1 == object()

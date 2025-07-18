@@ -31,26 +31,12 @@ class PathValues(list):
     empty list `[]` which might be returned by `eval_path` when a specific,
     non-multi-match path is not found.
     """
+
     def __init__(self, iterable: Optional[Any] = None):
         super().__init__(iterable if iterable is not None else [])
 
     def __repr__(self) -> str:
         return f"PathValues({super().__repr__()})"
-
-    def __add__(self, other: Any) -> 'PathValues':
-        if isinstance(other, list): # Handles list and PathValues
-            return PathValues(super().__add__(other))
-        return NotImplemented # type: ignore
-
-    def __iadd__(self, other: Any) -> 'PathValues':
-        super().__iadd__(other) # Modifies in place
-        return self
-
-    def __mul__(self, n: int) -> 'PathValues':
-        return PathValues(super().__mul__(n))
-
-    def __rmul__(self, n: int) -> 'PathValues':
-        return PathValues(super().__rmul__(n)) # For n * PathValues
 
     def __getitem__(self, key: Any) -> Any:
         result = super().__getitem__(key)
@@ -58,10 +44,6 @@ class PathValues(list):
             return PathValues(result)
         # Single item access returns the item itself, not PathValues(item)
         return result
-
-    def copy(self) -> 'PathValues':
-        """Return a shallow copy of the PathValues."""
-        return PathValues(self)
 
     def first(self, default: Optional[Any] = None) -> Any:
         """
@@ -87,7 +69,9 @@ class PathValues(list):
         elif not self:
             raise ValueError("PathValues is empty; expected exactly one element.")
         else:
-            raise ValueError(f"PathValues contains {len(self)} elements; expected exactly one.")
+            raise ValueError(
+                f"PathValues contains {len(self)} elements; expected exactly one."
+            )
 
     def one_or_none(self) -> Optional[Any]:
         """
@@ -102,8 +86,10 @@ class PathValues(list):
         elif not self:
             return None
         else:
-            raise ValueError(f"PathValues contains {len(self)} elements; expected one or none.")
-        
+            raise ValueError(
+                f"PathValues contains {len(self)} elements; expected one or none."
+            )
+
     def __contains__(self, item: Any) -> bool:
         """
         Check if an item is in the PathValues.

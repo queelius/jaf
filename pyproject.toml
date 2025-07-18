@@ -18,7 +18,9 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "rapidfuzz"
+    "rapidfuzz",
+    "fuzzy",
+    "lark>=1.1.0"
 ]
 
 # Specify package discovery
