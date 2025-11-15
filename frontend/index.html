@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JAF Streaming Interface</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        
+        .card h2 {
+            color: #333;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+        
+        input[type="text"],
+        textarea,
+        select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        input[type="text"]:focus,
+        textarea:focus,
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        textarea {
+            font-family: 'Courier New', monospace;
+            min-height: 100px;
+            resize: vertical;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .output {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+        }
+        
+        .output:empty::before {
+            content: "Results will appear here...";
+            color: #999;
+            font-style: italic;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e9ecef;
+        }
+        
+        .tab {
+            padding: 10px 20px;
+            background: none;
+            border: none;
+            color: #666;
+            cursor: pointer;
+            font-size: 16px;
+            transition: color 0.3s;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+        }
+        
+        .tab:hover {
+            color: #667eea;
+        }
+        
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .status {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            margin-left: 10px;
+        }
+        
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .status.processing {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .example-queries {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+        
+        .example-btn {
+            background: #f0f2f5;
+            color: #667eea;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            border: 1px solid #667eea;
+        }
+        
+        .example-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+        
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin-top: 10px;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .stat {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>JAF Streaming Interface</h1>
+        
+        <div class="card">
+            <h2>Operations <span id="ws-status" class="status disconnected">Disconnected</span></h2>
+            
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('filter')">Filter</button>
+                <button class="tab" onclick="switchTab('map')">Map</button>
+                <button class="tab" onclick="switchTab('groupby')">GroupBy</button>
+                <button class="tab" onclick="switchTab('join')">Join</button>
+                <button class="tab" onclick="switchTab('eval')">Eval</button>
+            </div>
+            
+            <!-- Filter Tab -->
+            <div id="filter-tab" class="tab-content active">
+                <div class="form-group">
+                    <label for="filter-source">Source (file path or JSON descriptor):</label>
+                    <input type="text" id="filter-source" placeholder='e.g., "data.jsonl" or {"type": "file", "path": "data.jsonl"}' value="data.jsonl">
+                </div>
+                
+                <div class="form-group">
+                    <label for="filter-query">Filter Query (JAF expression):</label>
+                    <textarea id="filter-query" placeholder='e.g., ["gt?", "@age", 25]'>["gt?", "@age", 25]</textarea>
+                    <div class="example-queries">
+                        <button class="example-btn" onclick="setFilterExample('simple')">Simple Filter</button>
+                        <button class="example-btn" onclick="setFilterExample('complex')">Complex Filter</button>
+                        <button class="example-btn" onclick="setFilterExample('nested')">Nested Path</button>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="filter-limit">Limit (optional):</label>
+                    <input type="text" id="filter-limit" placeholder="e.g., 100">
+                </div>
+                
+                <button onclick="executeFilter()">Execute Filter</button>
+            </div>
+            
+            <!-- Map Tab -->
+            <div id="map-tab" class="tab-content">
+                <div class="form-group">
+                    <label for="map-source">Source (file path or JSON descriptor):</label>
+                    <input type="text" id="map-source" placeholder='e.g., "data.jsonl"' value="data.jsonl">
+                </div>
+                
+                <div class="form-group">
+                    <label for="map-expression">Map Expression (JAF expression):</label>
+                    <textarea id="map-expression" placeholder='e.g., ["dict", "name", "@name", "age", "@age"]'>["dict", "name", "@name", "age", "@age"]</textarea>
+                    <div class="example-queries">
+                        <button class="example-btn" onclick="setMapExample('extract')">Extract Field</button>
+                        <button class="example-btn" onclick="setMapExample('transform')">Transform</button>
+                        <button class="example-btn" onclick="setMapExample('compute')">Compute</button>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="map-limit">Limit (optional):</label>
+                    <input type="text" id="map-limit" placeholder="e.g., 100">
+                </div>
+                
+                <button onclick="executeMap()">Execute Map</button>
+            </div>
+            
+            <!-- GroupBy Tab -->
+            <div id="groupby-tab" class="tab-content">
+                <div class="form-group">
+                    <label for="groupby-source">Source (file path or JSON descriptor):</label>
+                    <input type="text" id="groupby-source" placeholder='e.g., "data.jsonl"' value="data.jsonl">
+                </div>
+                
+                <div class="form-group">
+                    <label for="groupby-key">Group Key Expression:</label>
+                    <textarea id="groupby-key" placeholder='e.g., ["@", [["key", "category"]]]'>["@", [["key", "category"]]]</textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="groupby-aggregate">Aggregations (JSON):</label>
+                    <textarea id="groupby-aggregate" placeholder='e.g., {"count": ["count"], "total": ["sum", "@amount"]}'>{"count": ["count"], "total": ["sum", "@amount"]}</textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="groupby-window">Window Size:</label>
+                    <input type="text" id="groupby-window" placeholder="inf for exact, or number for windowed" value="inf">
+                </div>
+                
+                <button onclick="executeGroupBy()">Execute GroupBy</button>
+            </div>
+            
+            <!-- Join Tab -->
+            <div id="join-tab" class="tab-content">
+                <div class="form-group">
+                    <label for="join-left">Left Source:</label>
+                    <input type="text" id="join-left" placeholder='e.g., "users.jsonl"' value="users.jsonl">
+                </div>
+                
+                <div class="form-group">
+                    <label for="join-right">Right Source:</label>
+                    <input type="text" id="join-right" placeholder='e.g., "orders.jsonl"' value="orders.jsonl">
+                </div>
+                
+                <div class="form-group">
+                    <label for="join-on">Join Key (left):</label>
+                    <textarea id="join-on" placeholder='e.g., ["@", [["key", "id"]]]'>["@", [["key", "id"]]]</textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="join-on-right">Join Key (right, optional):</label>
+                    <textarea id="join-on-right" placeholder='e.g., ["@", [["key", "user_id"]]]'>["@", [["key", "user_id"]]]</textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="join-how">Join Type:</label>
+                    <select id="join-how">
+                        <option value="inner">Inner</option>
+                        <option value="left">Left</option>
+                        <option value="right">Right</option>
+                        <option value="outer">Outer</option>
+                    </select>
+                </div>
+                
+                <button onclick="executeJoin()">Execute Join</button>
+            </div>
+            
+            <!-- Eval Tab -->
+            <div id="eval-tab" class="tab-content">
+                <div class="form-group">
+                    <label for="eval-data">Data (JSON):</label>
+                    <textarea id="eval-data" placeholder='e.g., {"name": "Alice", "age": 30}'>{"name": "Alice", "age": 30, "scores": [85, 90, 78]}</textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="eval-expression">Expression:</label>
+                    <textarea id="eval-expression" placeholder='e.g., ["gt?", "@age", 25]'>["mean", "@scores"]</textarea>
+                    <div class="example-queries">
+                        <button class="example-btn" onclick="setEvalExample('predicate')">Predicate</button>
+                        <button class="example-btn" onclick="setEvalExample('transform')">Transform</button>
+                        <button class="example-btn" onclick="setEvalExample('aggregate')">Aggregate</button>
+                    </div>
+                </div>
+                
+                <button onclick="executeEval()">Evaluate</button>
+            </div>
+            
+            <div id="output" class="output"></div>
+            <div class="stats">
+                <div class="stat">Items: <span id="item-count">0</span></div>
+                <div class="stat">Time: <span id="exec-time">0ms</span></div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let ws = null;
+        let apiUrl = 'http://localhost:8000';
+        let startTime = null;
+        
+        function connectWebSocket() {
+            ws = new WebSocket('ws://localhost:8000/ws');
+            
+            ws.onopen = () => {
+                document.getElementById('ws-status').className = 'status connected';
+                document.getElementById('ws-status').textContent = 'Connected';
+            };
+            
+            ws.onclose = () => {
+                document.getElementById('ws-status').className = 'status disconnected';
+                document.getElementById('ws-status').textContent = 'Disconnected';
+                setTimeout(connectWebSocket, 3000);
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleWSMessage(data);
+            };
+        }
+        
+        function handleWSMessage(data) {
+            const output = document.getElementById('output');
+            
+            if (data.error) {
+                output.innerHTML += `<div class="error">Error: ${data.error}</div>`;
+            } else if (data.done) {
+                const elapsed = Date.now() - startTime;
+                document.getElementById('exec-time').textContent = `${elapsed}ms`;
+                document.getElementById('ws-status').className = 'status connected';
+                document.getElementById('ws-status').textContent = 'Connected';
+            } else if (data.result !== undefined) {
+                output.innerHTML += JSON.stringify(data.result, null, 2) + '\n';
+                updateItemCount();
+            } else if (data.data) {
+                output.innerHTML += JSON.stringify(data.data) + '\n';
+                updateItemCount();
+            }
+        }
+        
+        function updateItemCount() {
+            const output = document.getElementById('output').textContent;
+            const lines = output.trim().split('\n').filter(l => l);
+            document.getElementById('item-count').textContent = lines.length;
+        }
+        
+        function clearOutput() {
+            document.getElementById('output').innerHTML = '';
+            document.getElementById('item-count').textContent = '0';
+            document.getElementById('exec-time').textContent = '0ms';
+        }
+        
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Deactivate all tab buttons
+            document.querySelectorAll('.tab').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Show selected tab
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+            
+            // Activate selected tab button
+            event.target.classList.add('active');
+            
+            clearOutput();
+        }
+        
+        async function executeFilter() {
+            clearOutput();
+            startTime = Date.now();
+            
+            const source = document.getElementById('filter-source').value;
+            const query = document.getElementById('filter-query').value;
+            const limit = document.getElementById('filter-limit').value;
+            
+            try {
+                const parsedSource = source.startsWith('{') ? JSON.parse(source) : source;
+                const parsedQuery = JSON.parse(query);
+                
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    document.getElementById('ws-status').className = 'status processing';
+                    document.getElementById('ws-status').textContent = 'Processing...';
+                    
+                    ws.send(JSON.stringify({
+                        operation: 'filter',
+                        source: parsedSource,
+                        query: parsedQuery,
+                        limit: limit ? parseInt(limit) : null
+                    }));
+                } else {
+                    throw new Error('WebSocket not connected');
+                }
+            } catch (error) {
+                document.getElementById('output').innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+        
+        async function executeMap() {
+            clearOutput();
+            startTime = Date.now();
+            
+            const source = document.getElementById('map-source').value;
+            const expression = document.getElementById('map-expression').value;
+            const limit = document.getElementById('map-limit').value;
+            
+            try {
+                const parsedSource = source.startsWith('{') ? JSON.parse(source) : source;
+                const parsedExpression = JSON.parse(expression);
+                
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    document.getElementById('ws-status').className = 'status processing';
+                    document.getElementById('ws-status').textContent = 'Processing...';
+                    
+                    ws.send(JSON.stringify({
+                        operation: 'map',
+                        source: parsedSource,
+                        expression: parsedExpression,
+                        limit: limit ? parseInt(limit) : null
+                    }));
+                } else {
+                    throw new Error('WebSocket not connected');
+                }
+            } catch (error) {
+                document.getElementById('output').innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+        
+        async function executeGroupBy() {
+            clearOutput();
+            startTime = Date.now();
+            
+            const source = document.getElementById('groupby-source').value;
+            const key = document.getElementById('groupby-key').value;
+            const aggregate = document.getElementById('groupby-aggregate').value;
+            const windowSize = document.getElementById('groupby-window').value;
+            
+            try {
+                const response = await fetch(`${apiUrl}/groupby`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        source: source.startsWith('{') ? JSON.parse(source) : source,
+                        key: JSON.parse(key),
+                        aggregate: aggregate ? JSON.parse(aggregate) : null,
+                        window_size: windowSize === 'inf' ? Infinity : parseFloat(windowSize)
+                    })
+                });
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    const text = decoder.decode(value);
+                    const lines = text.trim().split('\n');
+                    
+                    for (const line of lines) {
+                        if (line) {
+                            document.getElementById('output').innerHTML += line + '\n';
+                        }
+                    }
+                }
+                
+                updateItemCount();
+                const elapsed = Date.now() - startTime;
+                document.getElementById('exec-time').textContent = `${elapsed}ms`;
+            } catch (error) {
+                document.getElementById('output').innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+        
+        async function executeJoin() {
+            clearOutput();
+            startTime = Date.now();
+            
+            const leftSource = document.getElementById('join-left').value;
+            const rightSource = document.getElementById('join-right').value;
+            const on = document.getElementById('join-on').value;
+            const onRight = document.getElementById('join-on-right').value;
+            const how = document.getElementById('join-how').value;
+            
+            try {
+                const response = await fetch(`${apiUrl}/join`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        left_source: leftSource.startsWith('{') ? JSON.parse(leftSource) : leftSource,
+                        right_source: rightSource.startsWith('{') ? JSON.parse(rightSource) : rightSource,
+                        on: JSON.parse(on),
+                        on_right: onRight ? JSON.parse(onRight) : null,
+                        how: how,
+                        window_size: Infinity
+                    })
+                });
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    const text = decoder.decode(value);
+                    const lines = text.trim().split('\n');
+                    
+                    for (const line of lines) {
+                        if (line) {
+                            document.getElementById('output').innerHTML += line + '\n';
+                        }
+                    }
+                }
+                
+                updateItemCount();
+                const elapsed = Date.now() - startTime;
+                document.getElementById('exec-time').textContent = `${elapsed}ms`;
+            } catch (error) {
+                document.getElementById('output').innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+        
+        async function executeEval() {
+            clearOutput();
+            startTime = Date.now();
+            
+            const data = document.getElementById('eval-data').value;
+            const expression = document.getElementById('eval-expression').value;
+            
+            try {
+                const parsedData = JSON.parse(data);
+                const parsedExpression = JSON.parse(expression);
+                
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    document.getElementById('ws-status').className = 'status processing';
+                    document.getElementById('ws-status').textContent = 'Processing...';
+                    
+                    ws.send(JSON.stringify({
+                        operation: 'eval',
+                        data: parsedData,
+                        expression: parsedExpression
+                    }));
+                } else {
+                    // Fallback to REST API
+                    const response = await fetch(`${apiUrl}/eval`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            data: parsedData,
+                            expression: parsedExpression
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    document.getElementById('output').innerHTML = JSON.stringify(result.result, null, 2);
+                    updateItemCount();
+                    const elapsed = Date.now() - startTime;
+                    document.getElementById('exec-time').textContent = `${elapsed}ms`;
+                }
+            } catch (error) {
+                document.getElementById('output').innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+        
+        // Example setters
+        function setFilterExample(type) {
+            const examples = {
+                simple: '["gt?", "@age", 25]',
+                complex: '["and", ["gte?", "@age", 18], ["eq?", "@status", "active"]]',
+                nested: '["eq?", "@user.profile.verified", true]'
+            };
+            document.getElementById('filter-query').value = examples[type];
+        }
+        
+        function setMapExample(type) {
+            const examples = {
+                extract: '"@email"',
+                transform: '["dict", "name", ["upper-case", "@name"], "age", "@age"]',
+                compute: '["*", "@price", "@quantity"]'
+            };
+            document.getElementById('map-expression').value = examples[type];
+        }
+        
+        function setEvalExample(type) {
+            const examples = {
+                predicate: '["gt?", "@age", 25]',
+                transform: '["dict", "avg_score", ["mean", "@scores"], "name", "@name"]',
+                aggregate: '["sum", "@scores"]'
+            };
+            document.getElementById('eval-expression').value = examples[type];
+        }
+        
+        // Initialize WebSocket connection
+        connectWebSocket();
+    </script>
+</body>
+</html>

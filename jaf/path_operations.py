@@ -11,6 +11,7 @@ from typing import Any, List
 import rapidfuzz.distance as distance
 import fuzzy
 from .path_exceptions import PathSyntaxError
+from .path_types import MISSING_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +131,7 @@ class PathOperationDispatcher:
                 full_path_ast_for_error,
                 root_obj_for_path,
             )
-        return []
+        return [MISSING_PATH]
 
     def _handle_index(
         self,
@@ -158,7 +159,10 @@ class PathOperationDispatcher:
                     full_path_ast_for_error,
                     root_obj_for_path,
                 )
-        return []
+            # Index out of bounds - path doesn't exist
+            return [MISSING_PATH]
+        # Not a list - can't index
+        return [MISSING_PATH]
 
     def _handle_indices(
         self,

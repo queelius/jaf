@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "jaf": {
+      "command": "python",
+      "args": ["-m", "jaf.mcp_server"],
+      "env": {},
+      "description": "JAF (Just Another Flow) - Streaming JSON data processing with lazy evaluation"
+    }
+  }
+}

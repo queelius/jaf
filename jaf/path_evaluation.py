@@ -11,7 +11,7 @@ from typing import Any, List
 
 from .path_conversion import path_ast_to_string, string_to_path_ast
 from .path_exceptions import PathSyntaxError
-from .path_types import PathValues
+from .path_types import PathValues, MISSING_PATH
 from .path_operations import PathOperationDispatcher
 
 logger = logging.getLogger(__name__)
@@ -152,15 +152,24 @@ def eval_path(path_components_list: List[List[Any]], obj: Any) -> Any:
         if not matched_values:
             return []
         elif len(matched_values) == 1:
+            # Check if the single value is MISSING_PATH sentinel
+            if matched_values[0] is MISSING_PATH:
+                return MISSING_PATH
             return matched_values[0]
         else:
+            # Filter out MISSING_PATH sentinels for multi-value results
+            filtered = [v for v in matched_values if v is not MISSING_PATH]
+            if not filtered:
+                return MISSING_PATH
             logger.debug(
-                f"Path with specific-intent components yielded {len(matched_values)} results. "
+                f"Path with specific-intent components yielded {len(filtered)} results. "
                 f"Path: {path_components_list}. Wrapping in PathValues."
             )
-            return PathValues(matched_values)
+            return PathValues(filtered)
     else:
-        return PathValues(matched_values)
+        # Filter out MISSING_PATH sentinels for multi-match paths
+        filtered = [v for v in matched_values if v is not MISSING_PATH]
+        return PathValues(filtered)
 
 
 def exists(path_components_list: List[List[Any]], obj: Any) -> bool:
@@ -187,16 +196,18 @@ def exists(path_components_list: List[List[Any]], obj: Any) -> bool:
     """
     try:
         resolved_value = eval_path(path_components_list, obj)
+        
+        # Check if path is missing
+        if resolved_value is MISSING_PATH:
+            return False
+            
         if isinstance(resolved_value, PathValues):
             return len(resolved_value) > 0
         # If eval_path returns an empty list for a specific path (not PathValues),
-        # it means the path resolved to nothing, so it doesn't exist.
-        elif (
-            isinstance(resolved_value, list)
-            and not resolved_value
-            and not _path_has_multi_match_components(path_components_list)
-        ):
-            return False
+        # it could be an existing key with empty array value
+        elif isinstance(resolved_value, list) and len(resolved_value) == 0:
+            # Empty list is a valid value, the path exists
+            return True
         return True
     except (
         PathSyntaxError

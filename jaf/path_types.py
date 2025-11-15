@@ -8,6 +8,25 @@ This module contains data types related to JAF path operations.
 from typing import Any, Optional
 
 
+class MissingPath:
+    """
+    Sentinel class to indicate that a path does not exist in the data.
+    This is distinct from a path that exists but has an empty or null value.
+    """
+    def __bool__(self):
+        return False
+    
+    def __repr__(self):
+        return "MissingPath()"
+    
+    def __eq__(self, other):
+        return isinstance(other, MissingPath)
+
+
+# Singleton instance
+MISSING_PATH = MissingPath()
+
+
 class PathValues(list):
     """
     A list subclass representing a collection of values obtained from a JAF path

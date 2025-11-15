@@ -14,5 +14,11 @@ dist
 # MkDocs
 site/
 
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+*.coverage.*
+
 dev
 venv

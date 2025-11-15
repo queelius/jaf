@@ -3,12 +3,18 @@ JAF DSL Compiler
 
 Compiles DSL expressions to JAF AST and integrates with the JAF evaluation system.
 Provides a bridge between human-friendly syntax and JAF's AST-based evaluation.
+
+Supports multiple syntaxes:
+1. JSON arrays: ["eq?", "@name", "Alice"]
+2. Infix DSL: name == "Alice" and age > 25
+3. S-expressions: (and (eq? @name "Alice") (gt? @age 25))
 """
 
 from typing import List, Any, Union
 import json
 import logging
 from .dsl_parser import DSLParser, DSLSyntaxError
+from .sexp_parser import sexp_to_jaf
 
 logger = logging.getLogger(__name__)
 
@@ -103,10 +109,15 @@ def is_dsl_expression(query: Union[str, List[Any]]) -> bool:
 
 def smart_compile(query: Union[str, List[Any]]) -> List[Any]:
     """
-    Smart compilation that auto-detects DSL vs AST format.
+    Smart compilation that auto-detects format and compiles to JAF AST.
+    
+    Supports:
+    1. JSON arrays: ["eq?", "@name", "Alice"]
+    2. S-expressions: (eq? @name "Alice")
+    3. Infix DSL: name == "Alice"
 
     Args:
-        query: Query in DSL string format or AST list format
+        query: Query in any supported format
 
     Returns:
         JAF AST representation
@@ -115,16 +126,37 @@ def smart_compile(query: Union[str, List[Any]]) -> List[Any]:
         # Already AST format
         return query
     elif isinstance(query, str):
+        # Remove leading/trailing whitespace
+        query = query.strip()
+        
         # Check if it's JSON-encoded AST
+        if query.startswith('['):
+            try:
+                parsed = json.loads(query)
+                if isinstance(parsed, list):
+                    return parsed  # JSON-encoded AST
+            except (json.JSONDecodeError, ValueError):
+                pass
+        
+        # Check if it's an S-expression
+        if query.startswith('('):
+            try:
+                return sexp_to_jaf(query)
+            except Exception as e:
+                logger.debug(f"Not an S-expression: {e}")
+                # Fall through to try DSL
+        
+        # Try the infix DSL parser
         try:
-            parsed = json.loads(query)
-            if isinstance(parsed, list):
-                return parsed  # JSON-encoded AST
-        except (json.JSONDecodeError, ValueError):
-            pass
-
-        # Assume it's DSL and compile it
-        return compile_dsl(query)
+            return compile_dsl(query)
+        except DSLSyntaxError:
+            # If DSL fails and it looks like it might be a simple value
+            # Try parsing as JSON value
+            try:
+                value = json.loads(query)
+                return value
+            except:
+                raise DSLSyntaxError(f"Could not parse query in any known format: {query}")
     else:
         raise DSLSyntaxError(f"Invalid query type: {type(query)}")
 

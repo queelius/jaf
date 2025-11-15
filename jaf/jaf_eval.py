@@ -5,7 +5,7 @@ import logging
 import functools
 import math
 from .path_evaluation import exists, eval_path
-from .path_types import PathValues
+from .path_types import PathValues, MISSING_PATH
 from .utils import adapt_jaf_operator
 from .path_conversion import string_to_path_ast
 from .exceptions import (
@@ -66,7 +66,7 @@ class jaf_eval:
 
     # Special forms don't have their arguments evaluated before the operator is called.
     # This allows for custom logic like short-circuiting (and, or) or preventing evaluation (literal).
-    special_forms = {"if", "and", "or", "not", "exists?", "@", "self", "literal"}
+    special_forms = {"if", "and", "or", "not", "exists?", "is-empty?", "@", "self", "literal"}
 
     # Regular functions that evaluate all arguments first
     funcs = {
@@ -208,7 +208,11 @@ class jaf_eval:
                 raise PathSyntaxError("Empty path expression after @", path_segment="@")
             path_ast = string_to_path_ast(path_string)
             logger.debug(f"Converted @{path_string} to path AST: {path_ast}")
-            return eval_path(path_ast, obj)
+            result = eval_path(path_ast, obj)
+            # Convert MISSING_PATH to [] for backwards compatibility
+            if result is MISSING_PATH:
+                return []
+            return result
 
         # Handle non-list values (literals)
         if not isinstance(query, list):
@@ -291,6 +295,10 @@ class jaf_eval:
             # See: https://github.com/anthropics/jaf/issues/XXX
 
             res = eval_path(path_expr, obj)
+            
+            # Check if path doesn't exist
+            if res is MISSING_PATH:
+                return []  # Return empty list for non-existent paths
 
             # For simple paths (no wildcards), return single value
             # Check if path contains wildcards
@@ -301,12 +309,10 @@ class jaf_eval:
             )
 
             if not has_wildcards:
-                # For simple paths, return the single value or empty list
+                # For simple paths, return the single value
                 if isinstance(res, list):
                     if len(res) == 0:
-                        return (
-                            []
-                        )  # Original behavior - can't distinguish from non-existent
+                        return []  # Empty array is a valid value
                     elif len(res) == 1:
                         return res[0]
                     else:
@@ -318,6 +324,30 @@ class jaf_eval:
                 # Path with wildcards - return full list
                 return res
 
+        elif op == "is-empty?":
+            if len(args) != 1:
+                raise InvalidArgumentCountError("is-empty?", 1, len(args))
+            
+            # Special handling for path expressions to check existence first
+            arg = args[0]
+            if isinstance(arg, str) and arg.startswith("@"):
+                # Convert @ prefixed strings to path expressions
+                path_string = arg[1:]
+                path_ast = string_to_path_ast(path_string)
+                path_expr = ["@", path_ast]
+                
+                # First check if path exists
+                if not exists(path_ast, obj):
+                    return False  # Non-existent paths are not considered empty
+                
+                # Path exists, now check if it's empty
+                value = eval_path(path_ast, obj)
+                return value is None or (hasattr(value, "__len__") and len(value) == 0)
+            else:
+                # Not a path expression, evaluate normally
+                value = jaf_eval.eval(arg, obj)
+                return value is None or (hasattr(value, "__len__") and len(value) == 0)
+        
         elif op == "exists?":
             if len(args) != 1:
                 raise InvalidArgumentCountError("exists?", 1, len(args))

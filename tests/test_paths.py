@@ -5,7 +5,7 @@ Tests for JAF path system and wildcard functionality.
 import pytest
 from jaf.jaf_eval import jaf_eval  # Corrected import for jaf_eval
 from jaf.path_evaluation import eval_path, exists, is_valid_path_str
-from jaf.path_types import PathValues
+from jaf.path_types import PathValues, MISSING_PATH
 from jaf.path_exceptions import PathSyntaxError
 
 
@@ -99,29 +99,29 @@ class TestPathSystem:
         """Test accessing non-existent paths"""
         # path: ["nonexistent"]
         result = eval_path([["key", "nonexistent"]], self.nested_data)
-        assert result == []
+        assert result is MISSING_PATH
 
         # path: ["user", "nonexistent"]
         result = eval_path([["key", "user"], ["key", "nonexistent"]], self.nested_data)
-        assert result == []
+        assert result is MISSING_PATH
 
         # path: ["items", 5, "status"] (index out of bounds)
         result = eval_path(
             [["key", "items"], ["index", 5], ["key", "status"]], self.nested_data
         )
-        assert result == []
+        assert result is MISSING_PATH
 
         # path: ["items", 0, "nonkey"] (key not in dict at index)
         result = eval_path(
             [["key", "items"], ["index", 0], ["key", "nonkey"]], self.nested_data
         )
-        assert result == []
+        assert result is MISSING_PATH
 
         # path: ["items", -10, "status"] (negative index out of bounds)
         result = eval_path(
             [["key", "items"], ["index", -10], ["key", "status"]], self.nested_data
         )
-        assert result == []
+        assert result is MISSING_PATH
 
     def test_wildcard_single_level(self):
         """Test single-level wildcard '*'"""
@@ -223,7 +223,7 @@ class TestPathSystem:
 
         path_fail_then_root = [["key", "nonexistent"], ["root"], ["key", "user"]]
         result = eval_path(path_fail_then_root, self.nested_data)
-        assert result == []
+        assert result is MISSING_PATH
 
     def test_root_operator_evaluation_with_multi_roots_and_nonexistent_keys(self):
 
@@ -234,7 +234,7 @@ class TestPathSystem:
             ["key", "user"],
         ]
         result = eval_path(path_root_fail_root, self.nested_data)
-        assert result == []
+        assert result is MISSING_PATH
 
     def test_root_operator_evaluation_with_successive_roots(self):
 

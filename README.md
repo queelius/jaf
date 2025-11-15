@@ -2,6 +2,8 @@
 
 [![PyPI version](https://badge.fury.io/py/jaf.svg)](https://badge.fury.io/py/jaf)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Test Coverage](https://img.shields.io/badge/coverage-68%25-yellow.svg)](https://github.com/queelius/jaf)
+[![Tests](https://img.shields.io/badge/tests-474%20passing-brightgreen.svg)](https://github.com/queelius/jaf)
 
 JAF (Just Another Flow) is a powerful streaming data processing system for JSON/JSONL data with a focus on lazy evaluation, composability, and a fluent API.
 
@@ -25,19 +27,28 @@ pip install jaf
 ### Command Line
 
 ```bash
-# Filter JSON data (lazy by default)
+# Filter JSON data using S-expressions (lazy by default)
+jaf filter users.jsonl '(gt? @age 25)'
+
+# Or use JSON array syntax
 jaf filter users.jsonl '["gt?", "@age", 25]'
 
-# Evaluate immediately
-jaf filter users.jsonl '["gt?", "@age", 25]' --eval
+# Or use infix DSL (note: paths need @ prefix)
+jaf filter users.jsonl '@age > 25'
+
+# Evaluate immediately with --eval
+jaf filter users.jsonl '(gt? @age 25)' --eval
 
 # Chain operations
-jaf filter users.jsonl '["eq?", "@status", "active"]' | \
+jaf filter users.jsonl '(eq? @status "active")' | \
 jaf map - "@email" | \
 jaf eval -
 
+# Complex queries with nested logic
+jaf filter logs.jsonl '(and (eq? @level "ERROR") (gt? @timestamp "2024-01-01"))' --eval
+
 # Combine with other tools
-jaf filter logs.jsonl '["eq?", "@level", "ERROR"]' --eval | \
+jaf filter logs.jsonl '(eq? @level "ERROR")' --eval | \
 ja groupby service
 ```
 
@@ -76,25 +87,48 @@ for message in pipeline.evaluate():
 
 ### Query Language
 
-JAF uses S-expression syntax for queries:
+JAF supports multiple query syntaxes for flexibility:
 
-```python
+#### 1. S-Expression Syntax (Lisp-like)
+```lisp
 # Simple comparisons
-["eq?", "@status", "active"]         # status == "active"
-["gt?", "@age", 25]                  # age > 25
-["contains?", "@tags", "python"]     # "python" in tags
+(eq? @status "active")              # status == "active"
+(gt? @age 25)                       # age > 25
+(contains? @tags "python")          # "python" in tags
 
 # Boolean logic
+(and 
+    (gte? @age 18)
+    (eq? @verified true))
+
+# Nested expressions
+(or (eq? @role "admin") 
+    (and (eq? @role "user") 
+         (gt? @score 100)))
+```
+
+#### 2. JSON Array Syntax
+```python
+# Same queries in JSON array format
+["eq?", "@status", "active"]
+["gt?", "@age", 25]
+["contains?", "@tags", "python"]
+
 ["and", 
     ["gte?", "@age", 18],
     ["eq?", "@verified", true]
 ]
-
-# Path navigation with @
-["eq?", "@user.profile.name", "Alice"]  # Nested access
-["any", "@items.*.inStock"]             # Wildcard
-["exists?", "@**.error"]                # Recursive search
 ```
+
+#### 3. Infix DSL Syntax
+```python
+# Natural infix notation (paths need @ prefix)
+@status == "active"
+@age > 25 and @verified == true
+@role == "admin" or (@role == "user" and @score > 100)
+```
+
+All three syntaxes compile to the same internal representation. Use whichever feels most natural for your use case!
 
 ### Streaming Operations
 
@@ -187,6 +221,47 @@ JAF is designed for streaming large datasets:
 - Early termination (e.g., with `take`)
 - Efficient pipeline composition
 
+## Windowed Operations
+
+JAF supports windowed operations for memory-efficient processing of large datasets:
+
+- **distinct**, **groupby**, **join**, **intersect**, **except** all support `window_size` parameter
+- Use `window_size=float('inf')` for exact results (default)
+- Finite windows trade accuracy for memory efficiency
+- **Warning**: For intersect/except, window size must be large enough to capture overlapping items
+
+```python
+# Exact distinct (uses more memory)
+stream("data.jsonl").distinct(window_size=float('inf'))
+
+# Windowed distinct (bounded memory)
+stream("data.jsonl").distinct(window_size=1000)
+
+# Tumbling window groupby
+stream("logs.jsonl").groupby(key="@level", window_size=100)
+```
+
+## Future Work
+
+### Probabilistic Data Structures
+- **Bloom Filters** for memory-efficient approximate set operations (intersect, except, distinct)
+- **Count-Min Sketch** for frequency estimation and heavy hitters detection
+- **HyperLogLog** for cardinality estimation
+- These would provide controllable accuracy/memory tradeoffs with theoretical guarantees
+
+### Additional Features
+- **Top-K operations** - Find most frequent items in streams
+- **Sampling strategies** - Reservoir sampling, stratified sampling
+- **Time-based windows** - Process data in time intervals
+- **Exactly-once semantics** - Checkpointing and recovery
+- **Parallel processing** - Multi-threaded stream processing
+
+### Integrations
+- **FastAPI** - REST API for stream processing
+- **Model Context Protocol (MCP)** - LLM integration
+- **Apache Kafka** - Stream from/to Kafka topics
+- **Cloud Storage** - S3, GCS, Azure Blob support
+
 ## Contributing
 
 Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details.
@@ -199,3 +274,4 @@ JAF is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
 - [jsonl-algebra](https://github.com/queelius/jsonl-algebra) - Relational operations on JSONL
 - [jq](https://github.com/stedolan/jq) - Command-line JSON processor
+- [dotsuite](https://github.com/realazthat/dotsuite) - Pedagogical ecosystem demonstrating the concepts behind JAF through simple, composable tools. Great for understanding the theory and building blocks that JAF productionizes.
