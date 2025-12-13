@@ -22,24 +22,24 @@ from jaf.api import create_source
 
 class TestCreateSource:
     """Test the create_source helper function"""
-    
+
     def test_string_to_file_source(self):
-        """Test converting file path string to source dict"""
+        """Test converting file path string to source dict with parser"""
         result = create_source("data.jsonl")
-        assert result == {"type": "file", "path": "data.jsonl"}
-    
+        assert result == {"type": "jsonl", "inner_source": {"type": "file", "path": "data.jsonl"}}
+
     def test_dict_passthrough(self):
         """Test that dict sources pass through unchanged"""
         source = {"type": "memory", "data": [1, 2, 3]}
         result = create_source(source)
         assert result == source
-    
+
     def test_list_passthrough(self):
-        """Test that lists pass through as-is (not converted)"""
+        """Test that lists are converted to memory source"""
         data = [{"a": 1}, {"b": 2}]
         result = create_source(data)
-        # Lists are not handled specially, they pass through
-        assert result == data
+        # Lists are converted to memory sources
+        assert result == {"type": "memory", "data": data}
     
     def test_nested_source(self):
         """Test nested source descriptors"""

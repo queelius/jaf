@@ -682,6 +682,12 @@ def stream_distinct(
                   If not provided, uses the entire item
             - window_size: Size of sliding window for deduplication
                           (default: inf for exact distinct)
+            - strategy: Deduplication strategy:
+                - "exact": Use set for exact deduplication (default with inf window)
+                - "windowed": Use sliding window (default with finite window)
+                - "probabilistic": Use Bloom filter for memory-efficient approximate dedup
+            - bloom_expected_items: Expected number of items (for probabilistic strategy)
+            - bloom_fp_rate: False positive rate (for probabilistic strategy, default 0.01)
     """
     from .jaf_eval import jaf_eval
     import json
@@ -693,6 +699,9 @@ def stream_distinct(
     inner_source = source.get("inner_source")
     key_expr = source.get("key")
     window_size = source.get("window_size", float('inf'))
+    strategy = source.get("strategy")  # None = auto-select based on window_size
+    bloom_expected_items = source.get("bloom_expected_items", 10000)
+    bloom_fp_rate = source.get("bloom_fp_rate", 0.01)
 
     if not inner_source:
         raise ValueError("Distinct source missing 'inner_source'")
@@ -708,9 +717,47 @@ def stream_distinct(
     
     if window_size <= 0:
         raise ValueError("window_size must be positive")
-    
+
+    # Auto-select strategy if not specified
+    if strategy is None:
+        if window_size == float('inf'):
+            strategy = "exact"
+        else:
+            strategy = "windowed"
+
+    # Probabilistic strategy using Bloom filter
+    if strategy == "probabilistic":
+        from .probabilistic import BloomFilter
+
+        logger.debug(f"Using Bloom filter for probabilistic distinct "
+                    f"(expected={bloom_expected_items}, fp_rate={bloom_fp_rate})")
+
+        bloom = BloomFilter(
+            expected_items=bloom_expected_items,
+            false_positive_rate=bloom_fp_rate
+        )
+
+        for item in loader.stream(inner_source):
+            try:
+                if key_expr:
+                    key = jaf_eval.eval(key_expr, item)
+                else:
+                    key = item
+
+                # Convert unhashable types to strings
+                if isinstance(key, (list, dict)):
+                    key = json.dumps(key, sort_keys=True)
+
+                if key not in bloom:
+                    bloom.add(key)
+                    yield item
+            except Exception:
+                # On error, consider item unique
+                yield item
+        return
+
     # Use infinite window for exact results
-    if window_size == float('inf'):
+    if strategy == "exact" or window_size == float('inf'):
         logger.debug("Using infinite window for exact distinct")
         seen = set()
         
@@ -861,27 +908,32 @@ def stream_intersect(
             - right: Second source
             - key: Optional JAF expression for comparison key
             - window_size: Size of sliding window (inf for exact intersect)
-    
-    Warning:
-        When using finite window_size, the window must be large enough to 
-        capture overlapping items from both streams. For streams with different
-        starting points or gaps, the window may need to be very large to find
-        any intersections. Use window_size=float('inf') for exact results.
-        
-        Future versions may support probabilistic approaches (Bloom filters)
-        for memory-efficient approximate intersections.
+            - strategy: Intersection strategy:
+                - "exact": Load right side to memory (default with inf window)
+                - "windowed": Use sliding window (default with finite window)
+                - "probabilistic": Use Bloom filter for approximate membership
+            - bloom_expected_items: Expected items in right stream (for probabilistic)
+            - bloom_fp_rate: False positive rate (default 0.01)
+
+    Note:
+        The probabilistic strategy uses a Bloom filter to test if left items
+        exist in the right stream. This trades memory for accuracy - false
+        positives may cause some non-intersecting items to be included.
     """
     from .jaf_eval import jaf_eval
     import json
     import logging
     from collections import deque
-    
+
     logger = logging.getLogger(__name__)
 
     left_source = source.get("left")
     right_source = source.get("right")
     key_expr = source.get("key")
     window_size = source.get("window_size", float('inf'))
+    strategy = source.get("strategy")
+    bloom_expected_items = source.get("bloom_expected_items", 10000)
+    bloom_fp_rate = source.get("bloom_fp_rate", 0.01)
 
     if not left_source or not right_source:
         raise ValueError("Intersect source missing 'left' or 'right'")
@@ -897,8 +949,62 @@ def stream_intersect(
     
     if window_size <= 0:
         raise ValueError("window_size must be positive")
-    
-    if window_size == float('inf'):
+
+    # Auto-select strategy if not specified
+    if strategy is None:
+        if window_size == float('inf'):
+            strategy = "exact"
+        else:
+            strategy = "windowed"
+
+    # Probabilistic strategy using Bloom filter
+    if strategy == "probabilistic":
+        from .probabilistic import BloomFilter
+
+        logger.debug(f"Using Bloom filter for probabilistic intersect "
+                    f"(expected={bloom_expected_items}, fp_rate={bloom_fp_rate})")
+
+        # Build Bloom filter from right stream
+        bloom = BloomFilter(
+            expected_items=bloom_expected_items,
+            false_positive_rate=bloom_fp_rate
+        )
+
+        for item in loader.stream(right_source):
+            try:
+                if key_expr:
+                    key = jaf_eval.eval(key_expr, item)
+                else:
+                    key = item
+
+                if isinstance(key, (list, dict)):
+                    key = json.dumps(key, sort_keys=True)
+
+                bloom.add(key)
+            except Exception:
+                pass
+
+        # Stream left and check membership in Bloom filter
+        seen = set()
+        for item in loader.stream(left_source):
+            try:
+                if key_expr:
+                    key = jaf_eval.eval(key_expr, item)
+                else:
+                    key = item
+
+                if isinstance(key, (list, dict)):
+                    key = json.dumps(key, sort_keys=True)
+
+                # Check Bloom filter (may have false positives)
+                if key in bloom and key not in seen:
+                    seen.add(key)
+                    yield item
+            except Exception:
+                pass
+        return
+
+    if strategy == "exact" or window_size == float('inf'):
         # Exact intersect - load right side into memory
         logger.debug("Using infinite window for exact intersect")
         
@@ -1027,27 +1133,32 @@ def stream_except(
             - right: Second source to subtract
             - key: Optional JAF expression for comparison key
             - window_size: Size of sliding window (inf for exact except)
-    
-    Warning:
-        When using finite window_size, the window must be large enough to
-        capture items that need to be excluded. For streams with different
-        orderings or gaps, the window may need to be very large for accurate
-        results. Use window_size=float('inf') for exact results.
-        
-        Future versions may support probabilistic approaches (Bloom filters)
-        for memory-efficient approximate set differences.
+            - strategy: Except strategy:
+                - "exact": Load right side to memory (default with inf window)
+                - "windowed": Use sliding window (default with finite window)
+                - "probabilistic": Use Bloom filter for approximate exclusion
+            - bloom_expected_items: Expected items in right stream (for probabilistic)
+            - bloom_fp_rate: False positive rate (default 0.01)
+
+    Note:
+        The probabilistic strategy uses a Bloom filter to test if left items
+        exist in the right stream. False positives will cause some items
+        that should be included to be incorrectly excluded.
     """
     from .jaf_eval import jaf_eval
     import json
     import logging
     from collections import deque
-    
+
     logger = logging.getLogger(__name__)
 
     left_source = source.get("left")
     right_source = source.get("right")
     key_expr = source.get("key")
     window_size = source.get("window_size", float('inf'))
+    strategy = source.get("strategy")
+    bloom_expected_items = source.get("bloom_expected_items", 10000)
+    bloom_fp_rate = source.get("bloom_fp_rate", 0.01)
 
     if not left_source or not right_source:
         raise ValueError("Except source missing 'left' or 'right'")
@@ -1063,11 +1174,64 @@ def stream_except(
     
     if window_size <= 0:
         raise ValueError("window_size must be positive")
-    
-    if window_size == float('inf'):
+
+    # Auto-select strategy if not specified
+    if strategy is None:
+        if window_size == float('inf'):
+            strategy = "exact"
+        else:
+            strategy = "windowed"
+
+    # Probabilistic strategy using Bloom filter
+    if strategy == "probabilistic":
+        from .probabilistic import BloomFilter
+
+        logger.debug(f"Using Bloom filter for probabilistic except "
+                    f"(expected={bloom_expected_items}, fp_rate={bloom_fp_rate})")
+
+        # Build Bloom filter from right stream
+        bloom = BloomFilter(
+            expected_items=bloom_expected_items,
+            false_positive_rate=bloom_fp_rate
+        )
+
+        for item in loader.stream(right_source):
+            try:
+                if key_expr:
+                    key = jaf_eval.eval(key_expr, item)
+                else:
+                    key = item
+
+                if isinstance(key, (list, dict)):
+                    key = json.dumps(key, sort_keys=True)
+
+                bloom.add(key)
+            except Exception:
+                pass
+
+        # Stream left and check non-membership in Bloom filter
+        for item in loader.stream(left_source):
+            try:
+                if key_expr:
+                    key = jaf_eval.eval(key_expr, item)
+                else:
+                    key = item
+
+                if isinstance(key, (list, dict)):
+                    key = json.dumps(key, sort_keys=True)
+
+                # If not in Bloom filter, definitely not in right (no false negatives)
+                if key not in bloom:
+                    yield item
+            except Exception:
+                # On error, include the item
+                yield item
+        return
+
+    if strategy == "exact" or window_size == float('inf'):
         # Exact except - load right side into memory
         logger.debug("Using infinite window for exact except")
-        
+
         # Collect right stream into set
         right_set = set()
         for item in loader.stream(right_source):
@@ -1100,83 +1264,84 @@ def stream_except(
             except Exception:
                 # On error, include the item
                 yield item
-    else:
-        # Windowed except - use sliding window
-        logger.debug(f"Using sliding window of size {window_size} for except")
-        
-        # Buffer for right side with sliding window
-        right_window = deque(maxlen=int(window_size))
-        right_set = set()  # Current window set
-        
-        # First, fill the initial window from right stream
-        right_stream_iter = iter(loader.stream(right_source))
-        for _ in range(int(window_size)):
-            try:
-                item = next(right_stream_iter)
-                right_window.append(item)
-                try:
-                    if key_expr:
-                        key = jaf_eval.eval(key_expr, item)
-                    else:
-                        key = item
-                    if isinstance(key, (list, dict)):
-                        key = json.dumps(key, sort_keys=True)
-                    right_set.add(key)
-                except Exception:
-                    pass
-            except StopIteration:
-                break
-        
-        # Stream left and check non-membership in window
-        for item in loader.stream(left_source):
+        return
+
+    # Windowed except - use sliding window
+    logger.debug(f"Using sliding window of size {window_size} for except")
+
+    # Buffer for right side with sliding window
+    right_window = deque(maxlen=int(window_size))
+    right_set = set()  # Current window set
+
+    # First, fill the initial window from right stream
+    right_stream_iter = iter(loader.stream(right_source))
+    for _ in range(int(window_size)):
+        try:
+            item = next(right_stream_iter)
+            right_window.append(item)
             try:
                 if key_expr:
                     key = jaf_eval.eval(key_expr, item)
                 else:
                     key = item
-
                 if isinstance(key, (list, dict)):
                     key = json.dumps(key, sort_keys=True)
-
-                if key not in right_set:
-                    yield item
+                right_set.add(key)
             except Exception:
-                # On error, include the item
+                pass
+        except StopIteration:
+            break
+
+    # Stream left and check non-membership in window
+    for item in loader.stream(left_source):
+        try:
+            if key_expr:
+                key = jaf_eval.eval(key_expr, item)
+            else:
+                key = item
+
+            if isinstance(key, (list, dict)):
+                key = json.dumps(key, sort_keys=True)
+
+            if key not in right_set:
                 yield item
-            
-            # Slide the window
-            try:
-                new_item = next(right_stream_iter)
-                
-                # Remove oldest item from set if window is full
-                if len(right_window) >= window_size:
-                    old_item = right_window[0]
-                    try:
-                        if key_expr:
-                            old_key = jaf_eval.eval(key_expr, old_item)
-                        else:
-                            old_key = old_item
-                        if isinstance(old_key, (list, dict)):
-                            old_key = json.dumps(old_key, sort_keys=True)
-                        right_set.discard(old_key)
-                    except Exception:
-                        pass
-                
-                # Add new item to window and set
-                right_window.append(new_item)
+        except Exception:
+            # On error, include the item
+            yield item
+
+        # Slide the window
+        try:
+            new_item = next(right_stream_iter)
+
+            # Remove oldest item from set if window is full
+            if len(right_window) >= window_size:
+                old_item = right_window[0]
                 try:
                     if key_expr:
-                        new_key = jaf_eval.eval(key_expr, new_item)
+                        old_key = jaf_eval.eval(key_expr, old_item)
                     else:
-                        new_key = new_item
-                    if isinstance(new_key, (list, dict)):
-                        new_key = json.dumps(new_key, sort_keys=True)
-                    right_set.add(new_key)
+                        old_key = old_item
+                    if isinstance(old_key, (list, dict)):
+                        old_key = json.dumps(old_key, sort_keys=True)
+                    right_set.discard(old_key)
                 except Exception:
                     pass
-            except StopIteration:
-                # No more right items
+
+            # Add new item to window and set
+            right_window.append(new_item)
+            try:
+                if key_expr:
+                    new_key = jaf_eval.eval(key_expr, new_item)
+                else:
+                    new_key = new_item
+                if isinstance(new_key, (list, dict)):
+                    new_key = json.dumps(new_key, sort_keys=True)
+                right_set.add(new_key)
+            except Exception:
                 pass
+        except StopIteration:
+            # No more right items
+            pass
 
 
 # Register the lazy operation loaders

@@ -110,11 +110,30 @@ async def root():
     }
 
 
-def create_source(source_desc: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
-    """Convert source descriptor to proper format."""
+def create_source(source_desc: Union[str, Dict[str, Any], List]) -> Dict[str, Any]:
+    """Convert source descriptor to proper format with appropriate parsers."""
     if isinstance(source_desc, str):
-        # Simple file path
-        return {"type": "file", "path": source_desc}
+        # Simple file path - need to wrap with appropriate parser
+        path = source_desc
+
+        # Build base source with decompression if needed
+        if path.endswith(".gz"):
+            source = {"type": "gzip", "inner_source": {"type": "file", "path": path}}
+        else:
+            source = {"type": "file", "path": path}
+
+        # Add parser based on format
+        if ".jsonl" in path:
+            source = {"type": "jsonl", "inner_source": source}
+        elif ".csv" in path:
+            source = {"type": "csv", "inner_source": source}
+        elif ".json" in path:
+            source = {"type": "json_array", "inner_source": source}
+
+        return source
+    if isinstance(source_desc, list):
+        # Raw list becomes memory source
+        return {"type": "memory", "data": source_desc}
     return source_desc
 
 
@@ -260,26 +279,27 @@ async def stream_data(
 ):
     """
     Stream data from a source.
-    
+
     Returns results as newline-delimited JSON stream.
     """
     try:
-        source = {"type": source_type}
-        
-        if source_type in ["file", "directory"]:
+        if source_type == "file":
             if not path:
-                raise HTTPException(status_code=400, detail=f"Path required for {source_type} source")
-            source["path"] = path
-            
-        if source_type == "directory":
-            source["pattern"] = pattern
-            source["recursive"] = recursive
-        
+                raise HTTPException(status_code=400, detail="Path required for file source")
+            # Use create_source to get proper parser wrapping
+            source = create_source(path)
+        elif source_type == "directory":
+            if not path:
+                raise HTTPException(status_code=400, detail="Path required for directory source")
+            source = {"type": "directory", "path": path, "pattern": pattern, "recursive": recursive}
+        else:
+            source = {"type": source_type}
+
         s = stream(source)
-        
+
         if limit:
             s = s.take(limit)
-        
+
         return StreamingResponse(
             stream_generator(s),
             media_type="application/x-ndjson",

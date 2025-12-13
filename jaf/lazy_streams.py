@@ -138,18 +138,31 @@ class LazyDataStream(ABC):
             self.collection_id,
         )
     
-    def distinct(self, key: Optional[List] = None, window_size: float = float('inf')) -> "LazyDataStream":
+    def distinct(
+        self,
+        key: Optional[List] = None,
+        window_size: float = float('inf'),
+        strategy: Optional[str] = None,
+        bloom_expected_items: int = 10000,
+        bloom_fp_rate: float = 0.01
+    ) -> "LazyDataStream":
         """Remove duplicate items from the stream.
-        
+
         Args:
             key: Optional JAF expression to extract uniqueness key
             window_size: Size of sliding window (inf for exact distinct)
+            strategy: Deduplication strategy ("exact", "windowed", "probabilistic")
+            bloom_expected_items: Expected items (for probabilistic strategy)
+            bloom_fp_rate: False positive rate (for probabilistic strategy)
         """
         return LazyDataStream(
             {
                 "type": "distinct",
                 "key": key,
                 "window_size": window_size,
+                "strategy": strategy,
+                "bloom_expected_items": bloom_expected_items,
+                "bloom_fp_rate": bloom_fp_rate,
                 "inner_source": self.collection_source
             },
             self.collection_id
@@ -175,14 +188,24 @@ class LazyDataStream(ABC):
             self.collection_id
         )
     
-    def intersect(self, other: "LazyDataStream", key: Optional[List] = None,
-                  window_size: float = float('inf')) -> "LazyDataStream":
+    def intersect(
+        self,
+        other: "LazyDataStream",
+        key: Optional[List] = None,
+        window_size: float = float('inf'),
+        strategy: Optional[str] = None,
+        bloom_expected_items: int = 10000,
+        bloom_fp_rate: float = 0.01
+    ) -> "LazyDataStream":
         """Get items that appear in both streams.
-        
+
         Args:
             other: Stream to intersect with
             key: Optional JAF expression for comparison key
             window_size: Size of sliding window (inf for exact intersect)
+            strategy: Intersection strategy ("exact", "windowed", "probabilistic")
+            bloom_expected_items: Expected items (for probabilistic strategy)
+            bloom_fp_rate: False positive rate (for probabilistic strategy)
         """
         return LazyDataStream(
             {
@@ -190,19 +213,32 @@ class LazyDataStream(ABC):
                 "left": self.collection_source,
                 "right": other.collection_source,
                 "key": key,
-                "window_size": window_size
+                "window_size": window_size,
+                "strategy": strategy,
+                "bloom_expected_items": bloom_expected_items,
+                "bloom_fp_rate": bloom_fp_rate
             },
             self.collection_id
         )
     
-    def except_from(self, other: "LazyDataStream", key: Optional[List] = None,
-                    window_size: float = float('inf')) -> "LazyDataStream":
+    def except_from(
+        self,
+        other: "LazyDataStream",
+        key: Optional[List] = None,
+        window_size: float = float('inf'),
+        strategy: Optional[str] = None,
+        bloom_expected_items: int = 10000,
+        bloom_fp_rate: float = 0.01
+    ) -> "LazyDataStream":
         """Get items in this stream but not in the other.
-        
+
         Args:
             other: Stream to subtract
-            key: Optional JAF expression for comparison key  
+            key: Optional JAF expression for comparison key
             window_size: Size of sliding window (inf for exact except)
+            strategy: Except strategy ("exact", "windowed", "probabilistic")
+            bloom_expected_items: Expected items (for probabilistic strategy)
+            bloom_fp_rate: False positive rate (for probabilistic strategy)
         """
         return LazyDataStream(
             {
@@ -210,7 +246,10 @@ class LazyDataStream(ABC):
                 "left": self.collection_source,
                 "right": other.collection_source,
                 "key": key,
-                "window_size": window_size
+                "window_size": window_size,
+                "strategy": strategy,
+                "bloom_expected_items": bloom_expected_items,
+                "bloom_fp_rate": bloom_fp_rate
             },
             self.collection_id
         )

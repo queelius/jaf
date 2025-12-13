@@ -202,32 +202,43 @@ class TestFastAPIEndpoints:
     
     def test_error_handling(self, client):
         """Test error handling for invalid requests"""
-        # Invalid query syntax
+        # Invalid query syntax - Pydantic validates type, returns 422
         response = client.post("/filter", json={
             "source": {"type": "memory", "data": []},
             "query": "invalid_query"  # Should be array
         })
-        
-        assert response.status_code == 400
-        
+
+        assert response.status_code == 422  # Pydantic validation error
+
         # Missing required field
         response = client.post("/filter", json={
             "source": {"type": "memory", "data": []}
             # Missing query
         })
-        
+
         assert response.status_code == 422  # Validation error
     
     def test_create_source_function(self):
         """Test source creation helper"""
-        # String to file source
+        # String to file source - now wraps with appropriate parser
         source = create_source("data.jsonl")
-        assert source == {"type": "file", "path": "data.jsonl"}
-        
+        assert source == {"type": "jsonl", "inner_source": {"type": "file", "path": "data.jsonl"}}
+
+        # JSON file gets json_array parser
+        source = create_source("data.json")
+        assert source == {"type": "json_array", "inner_source": {"type": "file", "path": "data.json"}}
+
+        # Gzipped JSONL gets both decompression and parser
+        source = create_source("data.jsonl.gz")
+        assert source == {
+            "type": "jsonl",
+            "inner_source": {"type": "gzip", "inner_source": {"type": "file", "path": "data.jsonl.gz"}}
+        }
+
         # Dict passes through
         source = create_source({"type": "memory", "data": []})
         assert source == {"type": "memory", "data": []}
-        
+
         # List to memory source
         source = create_source([1, 2, 3])
         assert source == {"type": "memory", "data": [1, 2, 3]}
@@ -393,9 +404,10 @@ class TestCORSAndMiddleware:
             "Origin": "http://example.com",
             "Access-Control-Request-Method": "POST"
         })
-        
+
         assert "access-control-allow-origin" in response.headers
-        assert response.headers["access-control-allow-origin"] == "*"
+        # When allow_credentials=True, CORS echoes the specific origin rather than "*"
+        assert response.headers["access-control-allow-origin"] in ["*", "http://example.com"]
     
     def test_content_type_headers(self, client):
         """Test correct content types"""

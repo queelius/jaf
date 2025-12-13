@@ -185,6 +185,10 @@ class jaf_eval:
         "ceil": adapt_jaf_operator(2, lambda x, obj: math.ceil(x)),
         "max": adapt_jaf_operator(-1, lambda *args, obj: max(args) if args else None),
         "min": adapt_jaf_operator(-1, lambda *args, obj: min(args) if args else None),
+        # Aggregation operators (operate on arrays)
+        "sum": adapt_jaf_operator(2, lambda arr, obj: sum(arr) if isinstance(arr, list) else arr),
+        "mean": adapt_jaf_operator(2, lambda arr, obj: sum(arr) / len(arr) if isinstance(arr, list) and len(arr) > 0 else None),
+        "count": adapt_jaf_operator(2, lambda arr, obj: len(arr) if hasattr(arr, '__len__') else 1),
         # Object construction
         "dict": adapt_jaf_operator(
             -1, lambda *args, obj: dict(zip(args[::2], args[1::2]))

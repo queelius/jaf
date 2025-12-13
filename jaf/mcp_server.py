@@ -225,10 +225,26 @@ async def handle_list_tools() -> List[Tool]:
 
 
 def create_source(source_desc: Any) -> Dict[str, Any]:
-    """Convert source descriptor to proper format."""
+    """Convert source descriptor to proper format with appropriate parsers."""
     if isinstance(source_desc, str):
-        # Simple file path
-        return {"type": "file", "path": source_desc}
+        # Simple file path - need to wrap with appropriate parser
+        path = source_desc
+
+        # Build base source with decompression if needed
+        if path.endswith(".gz"):
+            source = {"type": "gzip", "inner_source": {"type": "file", "path": path}}
+        else:
+            source = {"type": "file", "path": path}
+
+        # Add parser based on format
+        if ".jsonl" in path:
+            source = {"type": "jsonl", "inner_source": source}
+        elif ".csv" in path:
+            source = {"type": "csv", "inner_source": source}
+        elif ".json" in path:
+            source = {"type": "json_array", "inner_source": source}
+
+        return source
     elif isinstance(source_desc, dict):
         return source_desc
     else:

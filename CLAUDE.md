@@ -106,7 +106,7 @@ JAF supports multiple data sources via `stream()` or CLI:
 - **MCP Server**: `jaf/mcp_server.py` for LLM integration (install: `pip install jaf[mcp]`)
 - **Web Frontend**: `frontend/index.html` connects to API server via WebSockets
 
-See `INTEGRATIONS.md` for detailed integration examples.
+See `docs/` folder for detailed integration examples and TDD guides.
 
 ## Recent Work & Known State
 
@@ -121,8 +121,8 @@ See `INTEGRATIONS.md` for detailed integration examples.
 
 ### Known Limitations
 - Windowed intersect/except require careful window sizing for accurate results (trade accuracy for memory)
-- Some generator source tests may need attention
-- Test coverage at 68%, with 474 tests passing
+- API/MCP server tests have some known failures (29 tests) due to SDK compatibility
+- Test coverage at ~69%, with 645 tests passing (675 total)
 
 ### Future Work
 - **Probabilistic data structures**: Bloom filters, Count-Min Sketch, HyperLogLog for memory-efficient approximate operations
@@ -272,7 +272,7 @@ venv/bin/jaf filter data.jsonl '(gt? @age 25)' --eval
 
 ## Test Structure
 
-Tests organized in `tests/` (474 tests, 68% coverage):
+Tests organized in `tests/` (675 tests, ~69% coverage):
 - `test_jaf_core.py`: Core evaluation and filtering
 - `test_lazy_streams.py`, `test_streaming.py`, `test_lazy_evaluation.py`: Streaming architecture
 - `test_paths.py`, `test_path_*.py`: Path resolution and notation

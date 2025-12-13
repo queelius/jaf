@@ -30,8 +30,9 @@ from .path_exceptions import PathSyntaxError
 from .path_conversion import path_ast_to_string, string_to_path_ast
 from .exceptions import JAFError
 from .sexp_parser import sexp_to_jaf, jaf_to_sexp, compile_sexp
+from .probabilistic import BloomFilter, CountMinSketch, HyperLogLog
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"
 
 __all__ = [
     "stream",
@@ -49,4 +50,8 @@ __all__ = [
     "sexp_to_jaf",
     "jaf_to_sexp",
     "compile_sexp",
+    # Probabilistic data structures
+    "BloomFilter",
+    "CountMinSketch",
+    "HyperLogLog",
 ]

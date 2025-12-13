@@ -4,17 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jaf"
-version = "0.7.0"
+version = "0.8.0"
 description = "JAF (Just Another Flow) - A streaming data processing system for JSON with lazy evaluation, composable operations, and a fluent API"
 authors = [
     { name = "Alex Towell", email = "lex@metafunctor.com" }
 ]
 readme = "README.md"
-license = { text = "MIT License" }
+license = "MIT"
 keywords = ["streaming", "JSON", "JSONL", "lazy-evaluation", "fluent-api", "data-processing", "pipeline", "flow"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 dependencies = [
