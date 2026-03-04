@@ -66,6 +66,7 @@ nav:
   - CLI Reference: cli-reference.md
   - Cookbook: cookbook.md
   - Advanced Topics: advanced.md
+  - Probabilistic Data Structures: probabilistic.md
   - Development:
     - TDD Guide: TDD_GUIDE.md
     - TDD Quick Reference: TDD_QUICK_REFERENCE.md

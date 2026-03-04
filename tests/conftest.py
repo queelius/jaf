@@ -1,7 +1,15 @@
 """
 Pytest configuration for JAF tests.
 
-Handles conditional test collection to avoid import conflicts.
+Handles conditional test collection to avoid import conflicts with optional dependencies.
+
+Optional dependency tests:
+- test_api.py: Requires FastAPI (pip install jaf[api])
+- test_mcp_server.py: Requires MCP SDK (pip install jaf[mcp])
+
+Run specific test files directly when dependencies are available:
+    pytest tests/test_api.py -v
+    pytest tests/test_mcp_server.py -v
 """
 
 import pytest
@@ -12,24 +20,31 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "mcp: marks tests as requiring the MCP SDK"
     )
+    config.addinivalue_line(
+        "markers", "api: marks tests as requiring FastAPI"
+    )
 
 
 def pytest_ignore_collect(collection_path, config):
     """
-    Ignore test_mcp_server.py during collection when running full test suite.
+    Ignore optional dependency test files during full test suite runs.
 
-    The MCP SDK has metaclass conflicts that cause collection errors when
-    running alongside other tests. Run MCP tests separately:
-        pytest tests/test_mcp_server.py -v
+    This prevents import errors when optional dependencies aren't installed.
+    Tests can still be run directly when their dependencies are available.
     """
-    # Check if we're running a specific file or the whole suite
     args = config.invocation_params.args
+    filename = collection_path.name
 
-    # If running full suite (no specific test files given), skip MCP tests
-    if collection_path.name == "test_mcp_server.py":
+    # Files that require optional dependencies
+    optional_dep_tests = {
+        "test_mcp_server.py": "mcp",
+        # test_api.py uses pytest.importorskip so it handles itself
+    }
+
+    if filename in optional_dep_tests:
         # Allow if specifically requested
         for arg in args:
-            if "test_mcp_server.py" in str(arg):
+            if filename in str(arg):
                 return False
         # Skip if running all tests
         return True

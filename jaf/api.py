@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Union
 from pathlib import Path
 import json
 import asyncio
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks
@@ -83,9 +84,10 @@ app = FastAPI(
 )
 
 # Add CORS middleware
+_cors_origins = os.environ.get("JAF_CORS_ORIGINS", "http://localhost:3000,http://localhost:8000")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify actual origins
+    allow_origins=[o.strip() for o in _cors_origins.split(",")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -110,11 +112,26 @@ async def root():
     }
 
 
+def validate_path(path: str) -> str:
+    """Validate that a file path doesn't escape the allowed base directory.
+
+    Resolves symlinks and '..' components, then checks containment
+    within JAF_BASE_DIR (env var) or the current working directory.
+
+    Raises HTTPException(403) on traversal attempts.
+    """
+    base_dir = os.path.realpath(os.environ.get("JAF_BASE_DIR", os.getcwd()))
+    resolved = os.path.realpath(path)
+    if not resolved.startswith(base_dir + os.sep) and resolved != base_dir:
+        raise HTTPException(status_code=403, detail="Path is outside the allowed directory")
+    return resolved
+
+
 def create_source(source_desc: Union[str, Dict[str, Any], List]) -> Dict[str, Any]:
     """Convert source descriptor to proper format with appropriate parsers."""
     if isinstance(source_desc, str):
         # Simple file path - need to wrap with appropriate parser
-        path = source_desc
+        path = validate_path(source_desc)
 
         # Build base source with decompression if needed
         if path.endswith(".gz"):
@@ -134,6 +151,9 @@ def create_source(source_desc: Union[str, Dict[str, Any], List]) -> Dict[str, An
     if isinstance(source_desc, list):
         # Raw list becomes memory source
         return {"type": "memory", "data": source_desc}
+    if isinstance(source_desc, dict) and "path" in source_desc:
+        source_desc = dict(source_desc)
+        source_desc["path"] = validate_path(source_desc["path"])
     return source_desc
 
 
@@ -291,7 +311,7 @@ async def stream_data(
         elif source_type == "directory":
             if not path:
                 raise HTTPException(status_code=400, detail="Path required for directory source")
-            source = {"type": "directory", "path": path, "pattern": pattern, "recursive": recursive}
+            source = {"type": "directory", "path": validate_path(path), "pattern": pattern, "recursive": recursive}
         else:
             source = {"type": source_type}
 

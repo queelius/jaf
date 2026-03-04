@@ -12,8 +12,7 @@ import pytest
 from jaf.jaf_eval import jaf_eval
 from jaf.path_evaluation import eval_path, exists
 from jaf.path_conversion import string_to_path_ast
-from jaf.exceptions import PathSyntaxError
-from jaf.path_exceptions import PathSyntaxError as PathSyntaxErrorOld
+from jaf.path_exceptions import PathSyntaxError
 
 
 class TestAtSyntaxBasics:
@@ -272,8 +271,8 @@ class TestAtSyntaxErrorHandling:
         """Test invalid path expressions with @"""
         obj = {"name": "John"}
 
-        # Invalid path syntax should raise PathSyntaxError (from either module)
-        with pytest.raises((PathSyntaxError, PathSyntaxErrorOld)):
+        # Invalid path syntax should raise PathSyntaxError
+        with pytest.raises(PathSyntaxError):
             jaf_eval.eval("@[invalid", obj)  # Unterminated bracket
 
     def test_at_with_wrong_argument_count(self):

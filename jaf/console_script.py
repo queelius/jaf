@@ -3,7 +3,7 @@ import argparse
 import json
 import logging
 import sys
-from typing import List, Dict, Optional, Union, Any
+from typing import List, Dict, Iterable, Optional, Union, Any
 from .lazy_streams import stream, LazyDataStream, FilteredStream, MappedStream
 from . import __version__
 from .jaf_eval import jaf_eval
@@ -188,6 +188,56 @@ def main():
     )
     add_source_arguments(batch_parser)
 
+    # --- 'distinct' Subcommand ---
+    distinct_parser = subparsers.add_parser(
+        "distinct", help="Remove duplicate items from a stream."
+    )
+    distinct_parser.add_argument(
+        "input_source",
+        type=str,
+        nargs="?",
+        default="-",
+        help="Path to the input JSON/JSONL file, directory, or stream descriptor. Defaults to '-' to read from stdin.",
+    )
+    distinct_parser.add_argument(
+        "--key",
+        "-k",
+        metavar="EXPR",
+        help="Key expression for distinct (e.g., '@id' or '@user.email').",
+    )
+    distinct_parser.add_argument(
+        "--strategy",
+        "-s",
+        choices=["exact", "windowed", "probabilistic"],
+        default="exact",
+        help="Deduplication strategy: exact (default), windowed, or probabilistic.",
+    )
+    distinct_parser.add_argument(
+        "--window-size",
+        type=int,
+        metavar="N",
+        help="Window size for windowed strategy (number of items to remember).",
+    )
+    distinct_parser.add_argument(
+        "--bloom-expected-items",
+        type=int,
+        metavar="N",
+        help="Expected number of items for probabilistic strategy (Bloom filter sizing).",
+    )
+    distinct_parser.add_argument(
+        "--bloom-fp-rate",
+        type=float,
+        default=0.01,
+        metavar="RATE",
+        help="False positive rate for probabilistic strategy (default: 0.01).",
+    )
+    distinct_parser.add_argument(
+        "--eval",
+        action="store_true",
+        help="Evaluate and output results (default: output stream descriptor).",
+    )
+    add_source_arguments(distinct_parser)
+
     # --- 'stream' Subcommand ---
     stream_parser = subparsers.add_parser(
         "stream",
@@ -241,6 +291,41 @@ def main():
         "-e",
         action="store_true",
         help="Add index to each item.",
+    )
+    stream_parser.add_argument(
+        "--distinct",
+        action="store_true",
+        help="Remove duplicate items from the stream.",
+    )
+    stream_parser.add_argument(
+        "--distinct-key",
+        metavar="EXPR",
+        help="Key expression for distinct (e.g., '@id' or '@user.email').",
+    )
+    stream_parser.add_argument(
+        "--strategy",
+        choices=["exact", "windowed", "probabilistic"],
+        default="exact",
+        help="Strategy for set operations: exact (default), windowed, or probabilistic.",
+    )
+    stream_parser.add_argument(
+        "--window-size",
+        type=int,
+        metavar="N",
+        help="Window size for windowed strategy (number of items to remember).",
+    )
+    stream_parser.add_argument(
+        "--bloom-expected-items",
+        type=int,
+        metavar="N",
+        help="Expected number of items for probabilistic strategy (Bloom filter sizing).",
+    )
+    stream_parser.add_argument(
+        "--bloom-fp-rate",
+        type=float,
+        default=0.01,
+        metavar="RATE",
+        help="False positive rate for probabilistic strategy (default: 0.01).",
     )
     stream_parser.add_argument(
         "--lazy",
@@ -396,6 +481,8 @@ def main():
         handle_skip_command(args)
     elif args.command == "batch":
         handle_batch_command(args)
+    elif args.command == "distinct":
+        handle_distinct_command(args)
     elif args.command == "stream":
         handle_stream_command(args)
     elif args.command == "eval":
@@ -437,7 +524,7 @@ def handle_filter_command(args):
     if args.eval:
         # Evaluate and output results
         try:
-            _print_objects_as_jsonl(list(filtered_stream.evaluate()))
+            _print_objects_as_jsonl(filtered_stream.evaluate())
         except JAFError as e:
             logger.error(f"Error evaluating filter: {e}")
             sys.exit(1)
@@ -466,7 +553,7 @@ def handle_map_command(args):
     if args.eval:
         # Evaluate and output results
         try:
-            _print_objects_as_jsonl(list(mapped_stream.evaluate()))
+            _print_objects_as_jsonl(mapped_stream.evaluate())
         except JAFError as e:
             logger.error(f"Error evaluating map: {e}")
             sys.exit(1)
@@ -488,7 +575,7 @@ def handle_take_command(args):
     if args.eval:
         # Evaluate and output results
         try:
-            _print_objects_as_jsonl(list(result_stream.evaluate()))
+            _print_objects_as_jsonl(result_stream.evaluate())
         except JAFError as e:
             logger.error(f"Error evaluating stream: {e}")
             sys.exit(1)
@@ -510,7 +597,7 @@ def handle_skip_command(args):
     if args.eval:
         # Evaluate and output results
         try:
-            _print_objects_as_jsonl(list(result_stream.evaluate()))
+            _print_objects_as_jsonl(result_stream.evaluate())
         except JAFError as e:
             logger.error(f"Error evaluating stream: {e}")
             sys.exit(1)
@@ -532,7 +619,46 @@ def handle_batch_command(args):
     if args.eval:
         # Evaluate and output results
         try:
-            _print_objects_as_jsonl(list(result_stream.evaluate()))
+            _print_objects_as_jsonl(result_stream.evaluate())
+        except JAFError as e:
+            logger.error(f"Error evaluating stream: {e}")
+            sys.exit(1)
+    else:
+        # Default: Output stream descriptor
+        print(json.dumps(result_stream.to_dict(), separators=(",", ":")))
+
+
+def handle_distinct_command(args):
+    """Handles the 'distinct' subcommand."""
+    logger.debug(f"Distinct command with args: {args}")
+
+    # Load input stream
+    input_stream = _load_input_stream(args.input_source, args)
+
+    # Build distinct options
+    distinct_opts = {"strategy": args.strategy}
+
+    if args.key:
+        try:
+            distinct_opts["key"] = smart_compile(args.key)
+        except (json.JSONDecodeError, DSLSyntaxError) as e:
+            logger.error(f"Invalid key expression: {e}")
+            sys.exit(1)
+
+    if args.strategy == "windowed" and args.window_size:
+        distinct_opts["window_size"] = args.window_size
+    elif args.strategy == "probabilistic":
+        if args.bloom_expected_items:
+            distinct_opts["bloom_expected_items"] = args.bloom_expected_items
+        distinct_opts["bloom_fp_rate"] = args.bloom_fp_rate
+
+    # Apply distinct operation
+    result_stream = input_stream.distinct(**distinct_opts)
+
+    if args.eval:
+        # Evaluate and output results
+        try:
+            _print_objects_as_jsonl(result_stream.evaluate())
         except JAFError as e:
             logger.error(f"Error evaluating stream: {e}")
             sys.exit(1)
@@ -678,6 +804,25 @@ def handle_stream_command(args):
     if args.enumerate:
         operations.append(("enumerate", None))
 
+    if args.distinct:
+        # Collect strategy options
+        distinct_opts = {
+            "strategy": args.strategy,
+        }
+        if args.distinct_key:
+            try:
+                distinct_opts["key"] = smart_compile(args.distinct_key)
+            except (json.JSONDecodeError, DSLSyntaxError) as e:
+                logger.error(f"Invalid distinct key expression: {e}")
+                sys.exit(1)
+        if args.strategy == "windowed" and args.window_size:
+            distinct_opts["window_size"] = args.window_size
+        elif args.strategy == "probabilistic":
+            if args.bloom_expected_items:
+                distinct_opts["bloom_expected_items"] = args.bloom_expected_items
+            distinct_opts["bloom_fp_rate"] = args.bloom_fp_rate
+        operations.append(("distinct", distinct_opts))
+
     # Apply operations in the order they were specified
     # Note: argparse doesn't preserve the exact command line order for different argument types
     # For now, we apply in a fixed order: filter, map, take, skip, batch, enumerate
@@ -712,6 +857,9 @@ def handle_stream_command(args):
         elif op_type == "enumerate":
             current_stream = current_stream.enumerate()
 
+        elif op_type == "distinct":
+            current_stream = current_stream.distinct(**op_arg)
+
     # Output based on lazy flag
     if is_lazy:
         # Output stream descriptor
@@ -719,7 +867,7 @@ def handle_stream_command(args):
     else:
         # Evaluate and output results
         try:
-            _print_objects_as_jsonl(list(current_stream.evaluate()))
+            _print_objects_as_jsonl(current_stream.evaluate())
         except JAFError as e:
             logger.error(f"Error evaluating stream: {e}")
             sys.exit(1)
@@ -752,7 +900,7 @@ def handle_eval_command(args):
 
     try:
         data_stream = stream(stream_desc["collection_source"])
-        _print_objects_as_jsonl(list(data_stream.evaluate()))
+        _print_objects_as_jsonl(data_stream.evaluate())
     except JAFError as e:
         logger.error(f"Error evaluating stream: {e}")
         sys.exit(1)
@@ -771,7 +919,7 @@ def handle_and_command(args):
 
     if args.eval:
         try:
-            _print_objects_as_jsonl(list(result_stream.evaluate()))
+            _print_objects_as_jsonl(result_stream.evaluate())
         except JAFError as e:
             logger.error(f"Error evaluating stream: {e}")
             sys.exit(1)
@@ -792,7 +940,7 @@ def handle_or_command(args):
 
     if args.eval:
         try:
-            _print_objects_as_jsonl(list(result_stream.evaluate()))
+            _print_objects_as_jsonl(result_stream.evaluate())
         except JAFError as e:
             logger.error(f"Error evaluating stream: {e}")
             sys.exit(1)
@@ -812,7 +960,7 @@ def handle_not_command(args):
 
     if args.eval:
         try:
-            _print_objects_as_jsonl(list(result_stream.evaluate()))
+            _print_objects_as_jsonl(result_stream.evaluate())
         except JAFError as e:
             logger.error(f"Error evaluating stream: {e}")
             sys.exit(1)
@@ -833,7 +981,7 @@ def handle_xor_command(args):
 
     if args.eval:
         try:
-            _print_objects_as_jsonl(list(result_stream.evaluate()))
+            _print_objects_as_jsonl(result_stream.evaluate())
         except JAFError as e:
             logger.error(f"Error evaluating stream: {e}")
             sys.exit(1)
@@ -854,7 +1002,7 @@ def handle_difference_command(args):
 
     if args.eval:
         try:
-            _print_objects_as_jsonl(list(result_stream.evaluate()))
+            _print_objects_as_jsonl(result_stream.evaluate())
         except JAFError as e:
             logger.error(f"Error evaluating stream: {e}")
             sys.exit(1)
@@ -911,7 +1059,7 @@ def _load_filtered_stream(input_source: str) -> FilteredStream:
     sys.exit(1)
 
 
-def _print_objects_as_jsonl(objects: List[Any]) -> None:
+def _print_objects_as_jsonl(objects: Iterable[Any]) -> None:
     """Helper to print objects as JSONL."""
     for obj in objects:
         try:

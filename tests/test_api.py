@@ -2,16 +2,23 @@
 Test suite for FastAPI integration.
 
 Tests REST endpoints, WebSocket connections, and streaming responses.
+
+Requires: pip install jaf[api]
+Run with: pytest tests/test_api.py -v
 """
 
 import pytest
 import json
 import asyncio
 from unittest.mock import Mock, patch, MagicMock
-from fastapi.testclient import TestClient
-from fastapi import WebSocket
 import tempfile
 import os
+
+# Skip entire module if FastAPI not available
+fastapi = pytest.importorskip("fastapi", reason="FastAPI not installed - run: pip install jaf[api]")
+
+from fastapi.testclient import TestClient
+from fastapi import WebSocket
 
 # Import the FastAPI app
 from jaf.api import app, create_source

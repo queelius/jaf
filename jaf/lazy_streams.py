@@ -140,7 +140,7 @@ class LazyDataStream(ABC):
     
     def distinct(
         self,
-        key: Optional[List] = None,
+        key: Optional[Union[str, List]] = None,
         window_size: float = float('inf'),
         strategy: Optional[str] = None,
         bloom_expected_items: int = 10000,
@@ -168,7 +168,7 @@ class LazyDataStream(ABC):
             self.collection_id
         )
     
-    def groupby(self, key: List, aggregate: Optional[Dict[str, List]] = None,
+    def groupby(self, key: Union[str, List], aggregate: Optional[Dict[str, List]] = None,
                 window_size: float = float('inf')) -> "LazyDataStream":
         """Group items by a key expression.
         
@@ -191,7 +191,7 @@ class LazyDataStream(ABC):
     def intersect(
         self,
         other: "LazyDataStream",
-        key: Optional[List] = None,
+        key: Optional[Union[str, List]] = None,
         window_size: float = float('inf'),
         strategy: Optional[str] = None,
         bloom_expected_items: int = 10000,
@@ -224,7 +224,7 @@ class LazyDataStream(ABC):
     def except_from(
         self,
         other: "LazyDataStream",
-        key: Optional[List] = None,
+        key: Optional[Union[str, List]] = None,
         window_size: float = float('inf'),
         strategy: Optional[str] = None,
         bloom_expected_items: int = 10000,
@@ -255,8 +255,8 @@ class LazyDataStream(ABC):
         )
 
     def join(
-        self, other: "LazyDataStream", on: List, how: str = "inner",
-        on_right: Optional[List] = None, window_size: float = float('inf')
+        self, other: "LazyDataStream", on: Union[str, List], how: str = "inner",
+        on_right: Optional[Union[str, List]] = None, window_size: float = float('inf')
     ) -> "LazyDataStream":
         """Join with another stream.
         

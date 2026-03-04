@@ -2,8 +2,8 @@
 
 [![PyPI version](https://badge.fury.io/py/jaf.svg)](https://badge.fury.io/py/jaf)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Test Coverage](https://img.shields.io/badge/coverage-68%25-yellow.svg)](https://github.com/queelius/jaf)
-[![Tests](https://img.shields.io/badge/tests-474%20passing-brightgreen.svg)](https://github.com/queelius/jaf)
+[![Test Coverage](https://img.shields.io/badge/coverage-69%25-yellow.svg)](https://github.com/queelius/jaf)
+[![Tests](https://img.shields.io/badge/tests-733%20passing-brightgreen.svg)](https://github.com/queelius/jaf)
 
 JAF (Just Another Flow) is a powerful streaming data processing system for JSON/JSONL data with a focus on lazy evaluation, composability, and a fluent API.
 
@@ -15,6 +15,7 @@ JAF (Just Another Flow) is a powerful streaming data processing system for JSON/
 - 🧩 **Composable** - Combine operations freely, integrate with other tools
 - 📦 **Multiple Sources** - Files, directories, stdin, memory, compressed files, infinite streams
 - 🛠️ **Unix Philosophy** - Works great with pipes and other command-line tools
+- 🎲 **Probabilistic Data Structures** - Bloom filters, HyperLogLog, Count-Min Sketch for memory-efficient approximate operations
 
 ## Installation
 
@@ -241,13 +242,42 @@ stream("data.jsonl").distinct(window_size=1000)
 stream("logs.jsonl").groupby(key="@level", window_size=100)
 ```
 
-## Future Work
+## Probabilistic Data Structures
 
-### Probabilistic Data Structures
-- **Bloom Filters** for memory-efficient approximate set operations (intersect, except, distinct)
-- **Count-Min Sketch** for frequency estimation and heavy hitters detection
-- **HyperLogLog** for cardinality estimation
-- These would provide controllable accuracy/memory tradeoffs with theoretical guarantees
+JAF v0.8.0+ includes probabilistic data structures for memory-efficient approximate operations:
+
+```python
+from jaf import BloomFilter, HyperLogLog, CountMinSketch, stream
+
+# Bloom Filter - Set membership with no false negatives
+bf = BloomFilter(expected_items=10000, false_positive_rate=0.01)
+bf.add("item1")
+print("item1" in bf)  # True (definitely or probably)
+print("item2" in bf)  # False (definitely not)
+
+# HyperLogLog - Cardinality estimation (~0.8% error with 16KB)
+hll = HyperLogLog(precision=14)
+for i in range(1_000_000):
+    hll.add(f"user_{i % 10000}")
+print(f"Unique users: ~{len(hll)}")  # ~10,000
+
+# Count-Min Sketch - Frequency estimation
+cms = CountMinSketch(epsilon=0.01, delta=0.01)
+cms.add("popular_item", count=1000)
+print(cms.estimate("popular_item"))  # >= 1000
+
+# Probabilistic stream operations
+stream("huge.jsonl").distinct(
+    key="@user_id",
+    strategy="probabilistic",
+    bloom_expected_items=100000,
+    bloom_fp_rate=0.01
+).evaluate()
+```
+
+See the [Probabilistic Data Structures documentation](https://queelius.github.io/jaf/probabilistic/) for details.
+
+## Future Work
 
 ### Additional Features
 - **Top-K operations** - Find most frequent items in streams
@@ -257,10 +287,21 @@ stream("logs.jsonl").groupby(key="@level", window_size=100)
 - **Parallel processing** - Multi-threaded stream processing
 
 ### Integrations
-- **FastAPI** - REST API for stream processing
-- **Model Context Protocol (MCP)** - LLM integration
 - **Apache Kafka** - Stream from/to Kafka topics
 - **Cloud Storage** - S3, GCS, Azure Blob support
+
+## Integrations
+
+JAF includes optional integrations:
+
+```bash
+# REST API with FastAPI
+pip install jaf[api]
+python -m jaf.api  # Starts server on localhost:8000
+
+# Model Context Protocol for LLMs
+pip install jaf[mcp]
+```
 
 ## Contributing
 

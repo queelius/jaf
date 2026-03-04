@@ -8,6 +8,7 @@ LLMs like Claude to process and analyze JSON data.
 
 import json
 import asyncio
+import os
 from typing import Any, Dict, List, Optional
 import sys
 from pathlib import Path
@@ -224,11 +225,26 @@ async def handle_list_tools() -> List[Tool]:
     ]
 
 
+def validate_path(path: str) -> str:
+    """Validate that a file path doesn't escape the allowed base directory.
+
+    Resolves symlinks and '..' components, then checks containment
+    within JAF_BASE_DIR (env var) or the current working directory.
+
+    Raises ValueError on traversal attempts.
+    """
+    base_dir = os.path.realpath(os.environ.get("JAF_BASE_DIR", os.getcwd()))
+    resolved = os.path.realpath(path)
+    if not resolved.startswith(base_dir + os.sep) and resolved != base_dir:
+        raise ValueError("Path is outside the allowed directory")
+    return resolved
+
+
 def create_source(source_desc: Any) -> Dict[str, Any]:
     """Convert source descriptor to proper format with appropriate parsers."""
     if isinstance(source_desc, str):
         # Simple file path - need to wrap with appropriate parser
-        path = source_desc
+        path = validate_path(source_desc)
 
         # Build base source with decompression if needed
         if path.endswith(".gz"):
@@ -246,6 +262,9 @@ def create_source(source_desc: Any) -> Dict[str, Any]:
 
         return source
     elif isinstance(source_desc, dict):
+        if "path" in source_desc:
+            source_desc = dict(source_desc)
+            source_desc["path"] = validate_path(source_desc["path"])
         return source_desc
     else:
         # If it's a list, assume it's in-memory data

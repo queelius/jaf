@@ -12,16 +12,12 @@ from .exceptions import (
     UnknownOperatorError,
     InvalidArgumentCountError,
     InvalidQueryFormatError,
-    PathSyntaxError,
     UnknownPathOperationError,
 )
+from .path_exceptions import PathSyntaxError
 
 # Set up the logger
 logger = logging.getLogger(__name__)
-
-
-class jafError(Exception):
-    pass
 
 
 def _jaf_subtract(*args, obj):
@@ -109,9 +105,6 @@ class jaf_eval:
         "is-array?": adapt_jaf_operator(2, lambda x, obj: isinstance(x, list)),
         "is-object?": adapt_jaf_operator(2, lambda x, obj: isinstance(x, dict)),
         "is-null?": adapt_jaf_operator(2, lambda x, obj: x is None),
-        "is-empty?": adapt_jaf_operator(
-            2, lambda x, obj: x is None or (hasattr(x, "__len__") and len(x) == 0)
-        ),
         # value extractors
         "length": adapt_jaf_operator(
             2, lambda x, obj: len(x) if hasattr(x, "__len__") else None

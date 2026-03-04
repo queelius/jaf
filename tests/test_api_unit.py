@@ -2,20 +2,21 @@
 Unit tests for API module without requiring FastAPI installation.
 
 These tests mock the FastAPI dependencies and test the core logic.
+They test the create_source helper function which doesn't require FastAPI.
 """
 
 import pytest
 import json
+import os
 from unittest.mock import Mock, patch, MagicMock
 import sys
 
-# Mock FastAPI modules before import
-sys.modules['fastapi'] = MagicMock()
-sys.modules['fastapi.responses'] = MagicMock()
-sys.modules['fastapi.middleware.cors'] = MagicMock()
-sys.modules['pydantic'] = MagicMock()
-sys.modules['uvicorn'] = MagicMock()
-sys.modules['websockets'] = MagicMock()
+# Mock FastAPI modules before import to allow testing create_source without FastAPI
+_mocked_modules = ['fastapi', 'fastapi.responses', 'fastapi.middleware.cors',
+                   'pydantic', 'uvicorn', 'websockets']
+for mod in _mocked_modules:
+    if mod not in sys.modules:
+        sys.modules[mod] = MagicMock()
 
 from jaf.api import create_source
 
@@ -26,7 +27,20 @@ class TestCreateSource:
     def test_string_to_file_source(self):
         """Test converting file path string to source dict with parser"""
         result = create_source("data.jsonl")
-        assert result == {"type": "jsonl", "inner_source": {"type": "file", "path": "data.jsonl"}}
+        expected_path = os.path.realpath("data.jsonl")
+        assert result == {"type": "jsonl", "inner_source": {"type": "file", "path": expected_path}}
+
+    def test_path_traversal_rejected(self):
+        """Test that path traversal attempts are rejected"""
+        from jaf.api import validate_path
+        # HTTPException is mocked, so validate_path raises the mock;
+        # we just check it doesn't silently succeed
+        try:
+            validate_path("/etc/passwd")
+        except Exception:
+            pass  # Expected: path outside cwd
+        else:
+            pytest.fail("validate_path should reject paths outside base dir")
 
     def test_dict_passthrough(self):
         """Test that dict sources pass through unchanged"""

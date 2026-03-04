@@ -301,3 +301,132 @@ class TestStreamingConsoleScript:
         assert "stream" in captured.out
         assert "filter" in captured.out
         assert "map" in captured.out
+
+
+class TestDistinctCommand:
+    """Test the distinct command with various strategies."""
+
+    def test_distinct_exact_strategy(self, tmp_path, capsys):
+        """Test distinct command with exact (default) strategy."""
+        test_file = tmp_path / "data.json"
+        test_data = [
+            {"id": 1, "name": "Alice"},
+            {"id": 2, "name": "Bob"},
+            {"id": 1, "name": "Alice Duplicate"},
+        ]
+        test_file.write_text(json.dumps(test_data))
+
+        test_args = ["jaf", "distinct", str(test_file), "--key", "@id", "--eval"]
+
+        with mock.patch.object(sys, "argv", test_args):
+            main()
+
+        captured = capsys.readouterr()
+        assert not captured.err
+
+        lines = captured.out.strip().split("\n")
+        results = [json.loads(line) for line in lines]
+        assert len(results) == 2
+        ids = {r["id"] for r in results}
+        assert ids == {1, 2}
+
+    def test_distinct_probabilistic_strategy(self, tmp_path, capsys):
+        """Test distinct command with probabilistic (Bloom filter) strategy."""
+        test_file = tmp_path / "data.json"
+        test_data = [
+            {"id": i % 3, "value": i}
+            for i in range(10)
+        ]  # ids: 0, 1, 2, 0, 1, 2, 0, 1, 2, 0
+        test_file.write_text(json.dumps(test_data))
+
+        test_args = [
+            "jaf", "distinct", str(test_file),
+            "--key", "@id",
+            "--strategy", "probabilistic",
+            "--bloom-expected-items", "100",
+            "--bloom-fp-rate", "0.01",
+            "--eval"
+        ]
+
+        with mock.patch.object(sys, "argv", test_args):
+            main()
+
+        captured = capsys.readouterr()
+        assert not captured.err
+
+        lines = captured.out.strip().split("\n")
+        results = [json.loads(line) for line in lines]
+        # Should have 3 unique ids (0, 1, 2)
+        assert len(results) == 3
+        ids = {r["id"] for r in results}
+        assert ids == {0, 1, 2}
+
+    def test_distinct_windowed_strategy(self, tmp_path, capsys):
+        """Test distinct command with windowed strategy."""
+        test_file = tmp_path / "data.json"
+        # Create data where duplicates are within the window
+        test_data = [
+            {"id": 1}, {"id": 2}, {"id": 3},
+            {"id": 1},  # Duplicate of first, within window of 5
+        ]
+        test_file.write_text(json.dumps(test_data))
+
+        test_args = [
+            "jaf", "distinct", str(test_file),
+            "--key", "@id",
+            "--strategy", "windowed",
+            "--window-size", "5",  # Window large enough to catch duplicate
+            "--eval"
+        ]
+
+        with mock.patch.object(sys, "argv", test_args):
+            main()
+
+        captured = capsys.readouterr()
+        assert not captured.err
+
+        lines = captured.out.strip().split("\n")
+        results = [json.loads(line) for line in lines]
+        # id=1 at position 3 should be filtered (still in window of 5)
+        assert len(results) == 3
+
+    def test_stream_distinct_flag(self, tmp_path, capsys):
+        """Test stream command with --distinct flag."""
+        test_file = tmp_path / "data.json"
+        test_data = [{"id": 1}, {"id": 2}, {"id": 1}, {"id": 3}]
+        test_file.write_text(json.dumps(test_data))
+
+        test_args = [
+            "jaf", "stream", str(test_file),
+            "--distinct",
+            "--distinct-key", "@id",
+            "--strategy", "exact"
+        ]
+
+        with mock.patch.object(sys, "argv", test_args):
+            main()
+
+        captured = capsys.readouterr()
+        assert not captured.err
+
+        lines = captured.out.strip().split("\n")
+        results = [json.loads(line) for line in lines]
+        assert len(results) == 3
+        ids = [r["id"] for r in results]
+        assert ids == [1, 2, 3]
+
+    def test_distinct_help_shows_strategies(self, capsys):
+        """Test that distinct --help shows strategy options."""
+        test_args = ["jaf", "distinct", "--help"]
+
+        with pytest.raises(SystemExit) as exc_info:
+            with mock.patch.object(sys, "argv", test_args):
+                main()
+
+        assert exc_info.value.code == 0
+
+        captured = capsys.readouterr()
+        assert "probabilistic" in captured.out
+        assert "windowed" in captured.out
+        assert "exact" in captured.out
+        assert "bloom-expected-items" in captured.out

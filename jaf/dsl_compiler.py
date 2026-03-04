@@ -155,7 +155,7 @@ def smart_compile(query: Union[str, List[Any]]) -> List[Any]:
             try:
                 value = json.loads(query)
                 return value
-            except:
+            except (json.JSONDecodeError, ValueError):
                 raise DSLSyntaxError(f"Could not parse query in any known format: {query}")
     else:
         raise DSLSyntaxError(f"Invalid query type: {type(query)}")

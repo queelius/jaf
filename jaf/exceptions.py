@@ -56,14 +56,6 @@ class PathError(JAFError):
     pass
 
 
-class PathSyntaxError(PathError):
-    """Raised when path has syntax errors"""
-
-    def __init__(self, message, path_segment=None):
-        super().__init__(message)
-        self.path_segment = path_segment
-
-
 class UnknownPathOperationError(PathError):
     """Raised when path contains unknown operation"""
 
