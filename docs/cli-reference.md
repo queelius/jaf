@@ -68,7 +68,7 @@ jaf map <input> <expression> [--eval]
 jaf map users.jsonl "@name" --eval
 
 # Create new structure
-jaf map data.jsonl '["dict", "id", "@id", "value", ["* ", "@count", 2]]'
+jaf map data.jsonl '["dict", "id", "@id", "value", ["*", "@count", 2]]'
 
 # Chain with filter
 jaf filter users.jsonl '["eq?", "@active", true]' | jaf map - "@email"
@@ -122,6 +122,47 @@ jaf batch <input> <size> [--eval]
 jaf batch large_file.jsonl 100 --eval
 
 # Each output line will be an array of up to 100 items
+```
+
+### distinct
+
+Remove duplicate items from a stream.
+
+```bash
+jaf distinct <input> [--key EXPR] [--strategy {exact,windowed,probabilistic}] [--window-size N] [--bloom-expected-items N] [--bloom-fp-rate RATE] [--eval]
+```
+
+**Options:**
+- `--key`, `-k`: Key expression for deduplication (e.g., `@user_id`)
+- `--strategy`, `-s`: `exact` (default), `windowed`, or `probabilistic`
+- `--window-size`: Number of items to remember (windowed strategy)
+- `--bloom-expected-items`: Expected item count for Bloom filter sizing (probabilistic)
+- `--bloom-fp-rate`: Target false positive rate, default `0.01` (probabilistic)
+- `--eval`: Evaluate immediately
+
+**Examples:**
+```bash
+# Remove exact duplicates
+jaf distinct events.jsonl --eval
+
+# Deduplicate by email field
+jaf distinct users.jsonl --key '@email' --eval
+
+# Memory-efficient dedup for large files
+jaf distinct huge.jsonl --key '@id' \
+    --strategy probabilistic \
+    --bloom-expected-items 1000000 \
+    --eval
+
+# Windowed dedup (remember last 5000 items)
+jaf distinct logs.jsonl --key '@request_id' \
+    --strategy windowed \
+    --window-size 5000 \
+    --eval
+
+# Chain with other operations
+jaf filter users.jsonl '["eq?", "@active", true]' | \
+jaf distinct - --key '@email' --eval
 ```
 
 ### eval
@@ -216,6 +257,12 @@ jaf stream <input> [options] [--lazy]
 - `--skip <n>`, `-s`: Skip first N items
 - `--batch <size>`, `-b`: Group into batches
 - `--enumerate`, `-e`: Add index to each item
+- `--distinct`: Remove duplicate items
+- `--distinct-key <expr>`: Key expression for deduplication
+- `--strategy {exact,windowed,probabilistic}`: Strategy for set operations (default: `exact`)
+- `--window-size <n>`: Window size for windowed strategy
+- `--bloom-expected-items <n>`: Expected items for probabilistic strategy
+- `--bloom-fp-rate <rate>`: False positive rate for probabilistic strategy (default: `0.01`)
 - `--lazy`, `-l`: Output stream descriptor instead of evaluating
 
 **Examples:**
@@ -238,6 +285,18 @@ jaf stream data.jsonl \
   --filter '["contains?", "@tags", "important"]' \
   --map '@content' \
   --lazy > important_content.json
+
+# Deduplicate within a pipeline
+jaf stream events.jsonl \
+    --filter '["eq?", "@type", "purchase"]' \
+    --distinct --distinct-key '@transaction_id' \
+    --take 100
+
+# Probabilistic dedup in a pipeline
+jaf stream huge_log.jsonl \
+    --distinct --distinct-key '@request_id' \
+    --strategy probabilistic \
+    --bloom-expected-items 500000
 ```
 
 ## Utility Commands

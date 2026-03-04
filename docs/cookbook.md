@@ -205,41 +205,30 @@ flattened = stream("orders.jsonl") \
         "order_id", "@id",
         "customer_name", "@customer.name",
         "customer_email", "@customer.email",
-        "shipping_address", ["concat",
-            "@shipping.street", ", ",
-            "@shipping.city", ", ",
-            "@shipping.state", " ",
-            "@shipping.zip"
-        ],
-        "total_items", ["length", "@items"],
-        "item_names", ["join", ["map", "@items", "@name"], ", "]
+        "shipping_city", "@shipping.city",
+        "shipping_state", "@shipping.state",
+        "total_items", ["length", "@items"]
     ]) \
     .evaluate()
 ```
 
 ### Processing Arrays within Documents
 
-```python
-# Find orders with specific items
-orders_with_electronics = stream("orders.jsonl") \
-    .filter(["any", 
-        ["map", "@items", ["eq?", "@category", "electronics"]]
-    ]) \
-    .evaluate()
+JAF's wildcard paths (`@items.*.field`) extract values from arrays of objects. Combined with aggregate operators, you can compute over nested arrays:
 
-# Calculate order statistics
+```python
+# Calculate order statistics using wildcard paths
 order_stats = stream("orders.jsonl") \
     .map(["dict",
         "order_id", "@id",
-        "total_amount", ["sum", ["map", "@items", "@price"]],
-        "avg_item_price", ["/", 
-            ["sum", ["map", "@items", "@price"]],
-            ["length", "@items"]
-        ],
-        "categories", ["unique", ["map", "@items", "@category"]]
+        "item_count", ["length", "@items"],
+        "categories", ["unique", "@items.*.category"]
     ]) \
     .evaluate()
 ```
+
+!!! note "Nested array limitations"
+    Operations like `["sum", "@items.*.price"]` work when the wildcard path resolves to a flat list. For more complex nested array processing (filtering within arrays, conditional aggregation), extract the data with JAF and process in Python.
 
 ## Performance Patterns
 
@@ -288,10 +277,10 @@ sampled = stream("large_dataset.jsonl") \
     .map("@value") \
     .evaluate()
 
-# Random sampling (using deterministic hash)
-random_sample = stream("data.jsonl") \
-    .filter(["lt?", ["%", ["hash", "@id"], 100], 10])  # ~10% sample
-    .evaluate()
+# Deterministic sampling using modulo on a numeric ID
+id_sample = stream("data.jsonl") \
+    .filter(["eq?", ["%", "@id", 10], 0]) \
+    .evaluate()  # ~10% sample (items where id % 10 == 0)
 ```
 
 ## Integration Patterns
