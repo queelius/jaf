@@ -273,6 +273,14 @@ windowed_stats = stream("metrics.jsonl").groupby(
 )
 ```
 
+**Parameters:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `key` | required | JAF expression to extract grouping key |
+| `aggregate` | `None` | Dict mapping field names to aggregate operations (`sum`, `mean`, `count`) |
+| `window_size` | `inf` | Tumbling window size. `inf` = exact groupby (unbounded memory). |
+
 **Aggregate operators:** `sum`, `mean`, `count` — each takes a path expression for the field to aggregate.
 
 ### Join

@@ -207,6 +207,20 @@ flattened = stream("orders.jsonl") \
         "customer_email", "@customer.email",
         "shipping_city", "@shipping.city",
         "shipping_state", "@shipping.state",
+        "total_items", ["length", "@items"],
+        "item_categories", ["unique", "@items.*.category"]
+    ]) \
+    .evaluate()
+
+# Filter flattened results to find large orders from a specific city
+large_seattle_orders = stream("orders.jsonl") \
+    .filter(["and",
+        ["eq?", "@shipping.city", "Seattle"],
+        ["gt?", ["length", "@items"], 5]
+    ]) \
+    .map(["dict",
+        "order_id", "@id",
+        "customer_name", "@customer.name",
         "total_items", ["length", "@items"]
     ]) \
     .evaluate()
